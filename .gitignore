@@ -1,0 +1,4 @@
+*.o
+build
+gcc
+binutils-gdb
