@@ -20,12 +20,15 @@ stack_top:
 .global _start
 .type _start, @function
 _start:
+  // Setup stack space
   mov $stack_top, %esp
-
+  
+  // Call main
   call kernel_main
-
-  cli
-1:hlt
-  jmp 1b
+  
+  // Infinite loop
+    cli
+lp: hlt
+    jmp lp
 
 .size _start, . - _start
