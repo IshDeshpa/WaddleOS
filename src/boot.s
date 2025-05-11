@@ -54,6 +54,8 @@ gdt_desc:
 .section .text
 .global _start
 .type _start, @function
+
+.code32
 _start:
   cli // disable interrupts
   
