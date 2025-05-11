@@ -1,36 +1,31 @@
-ENTRY(start)
+ENTRY(_start)
 
 SECTIONS{
 
-  // Load at 1Mb
+  /* Load at 1Mb */
   . = 1M;
   
-  // Multiboot header
-  .rodata BLOCK(4K) : ALIGN(4K)
+  /* Multiboot header */
+  .text : 
   {
-    *(.multiboot)
+     KEEP(*(.multiboot))
+     *(.text)
   }
 
-  // Code
-  .text BLOCK(4K) : ALIGN(4K)
-  {
-    *(.text)
-  }
-  
-  // Read only data
-  .rodata BLOCK(4K) : ALIGN(4K)
+  /* Read only data */
+  .rodata : ALIGN(4K)
   {
     *(.rodata)
   }
 
-  // Read-write data initialized
-  .data BLOCK(4K) : ALIGN(4K)
+  /* Read-write data initialized */
+  .data : ALIGN(4K)
   {
     *(.data)
   }
 
-  // Read-write data uninitialized; stack
-  .bss BLOCK(4K) : ALIGN(4K)
+  /* Read-write data uninitialized; stack */
+  .bss : ALIGN(4K)
   {
     *(COMMON)
     *(.bss)

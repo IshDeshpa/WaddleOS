@@ -9,6 +9,7 @@ if [ ! -d "gcc" ]; then
 else
   pushd gcc
   git pull
+  git checkout releases/gcc-15
   popd
 fi
 

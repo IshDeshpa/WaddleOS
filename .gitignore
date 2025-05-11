@@ -1,4 +1,4 @@
-*.o
+.cache
 build
-gcc
 binutils-gdb
+gcc
