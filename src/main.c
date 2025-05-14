@@ -2,7 +2,7 @@
 
 #ifdef __linux__
   #error "ERROR: Must be compiled via cross-compiler"
-#elif !defined(__i386)
+#elif !defined(__x86_64__)
   #error "ERROR: Must be compiled with an x86-elf compiler"
 #endif
 
