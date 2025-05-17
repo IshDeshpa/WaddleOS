@@ -13,10 +13,18 @@ else
   popd
 fi
 
-if [ ! -d "gcc" ]; then
+if [ ! -d "binutils-gdb" ]; then
   git clone git://sourceware.org/git/binutils-gdb.git
 else
   pushd binutils-gdb
+  git pull
+  popd
+fi
+
+if [ ! -d "gnu-efi" ]; then
+  git clone https://git.code.sf.net/p/gnu-efi/code gnu-efi
+else
+  pushd gnu-efi
   git pull
   popd
 fi

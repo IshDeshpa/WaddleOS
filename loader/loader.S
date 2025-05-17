@@ -1,80 +1,69 @@
-// .section .data
-// .align 4
-// gdt:
-// gdt_null:
-//   .quad 0 // quad = quad word (64-bit)
-// gdt_code:
-//   .word 0xFFFF // hex FFFF; 4GB limit for this code segment
-//   .word 0 // base address is 0
-//   .byte 0 // bits 16-23 for base address
-//   .byte 0b10011010  // bit 8: access flag (0)
-// 		// bit 9: readable? (1)
-// 		// bit 10: conforming (can less privileged segments call this segment?) (0)
-// 		// bit 11: execute? (1)
-// 		// bit 12: system (0) or code/data (1)? (1)
-// 		// bit 14-13: privilege level (00 most privileged)
-// 		// bit 15: present? (1)
-//   .byte 0b11001111  // bit 19-16: top four bits of segment limit
-// 		// bit 20: available for use by us (do whatever)
-// 		// bit 21: reserved by intel
-// 		// bit 22: 16-bit (0) or 32-bit (1) segment?
-// 		// bit 23: 4kB multiplier if set
-//   .byte 0		// bits 31-24: top four bits of base address
-// gdt_data:
-//   .word 0xFFFF
-//   .word 0
-//   .word 0
-//   .byte 0b10010010
-//   .byte 0b11001111
-//   .byte 0
-// gdt_end:
-// 
-// gdt_desc:
-//   .word gdt_end - gdt // size of gdt (0-15)
-//   .long gdt	      // gdt address (16-47)
-// 
 .code16
 
 .section .text
 .global _start
 .type _start, @function
 
-x: 
-  .byte 'b'
-
 _start:
-  movw $x, %bx               # bx = address of x
-  addw $0x7C00, %bx          # adjust for real-mode load offset
-  movb (%bx), %al            # load byte at bx into al
-  movb $0x0E, %ah            # BIOS teletype output function
-  int $0x10                  # call BIOS interrupt
-   
-loop:
-  jmp loop                      # Infinite loop
+  cli
+  ljmp $0x07C0, $start
 
-  . = 510              # Pad to 510 bytes from _start
-  .byte 0x55, 0xAA              # Boot signature
+fb0: .string "Fail boot0"
+sb0: .string "Success boot0"
+_disp:
+  # Expect carry bit to contain success or fail
+  # This should move carry bit into %ax
+  xor %ax, %ax        # Clear AX
+  adc %ax, %ax        # Add CF to AX → AX = 0 or 1
 
+  mov $0x0E, %ah
+  mov $fb0, %si
 
-//  cli // disable interrupts
-//  
-//  // set up gdt
-//  xorw %ax, %ax // clear ax
-//  movw %ds, %ax // set ds to 0 (base address)
-//  lgdt [gdt_desc]
-//  
-//  // enter protected mode
-//  movl %eax, %cr0 // eax = cr0
-//  orb %al, 1 // eax[0] = 1
-//  movl %cr0, %eax // cr0 = eax
-//  
-//  // clear pipeline by jumping and reload segment registers
-//  ljmp $0x01, $clear_pipe
-// 
-// clear_pipe:
-//   movw %ax, 0x01
-//   movw %ds, %ax
-//   movw %es, %ax
-//   movw %fs, %ax
-//   movw %gs, %ax
-//   movw %ss, %ax
+_p_lp:
+  # load from ds:si into al, and increment si
+  lodsb
+  or %al, %al
+  jz _p_done
+  int $0x10
+  jmp _p_lp
+  
+_p_done:
+  or %ax, %ax
+  jz _p_fin
+lp: 
+  jmp lp
+_p_fin:
+  ret
+
+start:
+  # Base of boot1 is 0x1000 in %es segment
+  mov $0x07C0, %ax # will be multiplied by 10 and added to whatever offset is used
+  mov %ax, %ds
+  mov %ax, %es
+  mov %ax, %fs
+  mov %ax, %gs
+  mov %ax, %ss
+  mov $0x07C0, %sp
+
+  sti
+
+  # Reset disk to known state
+  mov $0x00, %ah
+  int $0x13
+  
+  # Read from disk
+  mov $0x02, %ah
+  mov $0x11, %al # total sector count = 17 sectors (0x1000 to 0x31ff)
+  mov $0x00, %ch # cylinder is 0
+  mov $0x02, %cl # boot1 starts at sector 2
+  mov $0x00, %dh # head is 0
+  movw $0x1000, %bx # offset for segment of 0x1000 is 0
+  int $0x13  
+  
+  call _disp
+
+  # else, jump to 0x1000 to start boot1
+  ljmp $0x07C0, $0x1000
+ 
+.org 510              # Pad to 510 bytes from _start
+.byte 0x55, 0xAA              # Boot signature

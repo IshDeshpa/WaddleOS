@@ -10,17 +10,18 @@ PREFIX=$(abspath $(CROSS_BUILD_DIR))
 CC=$(CROSS_BUILD_DIR)/bin/$(TARGET)-gcc
 AS=$(CROSS_BUILD_DIR)/bin/$(TARGET)-as
 LD=$(CROSS_BUILD_DIR)/bin/$(TARGET)-ld
+OBJCOPY=$(CROSS_BUILD_DIR)/bin/$(TARGET)-objcopy
 GCC_STAMP=$(CROSS_BUILD_DIR)/.gcc-built
 BINUTILS_STAMP=$(CROSS_BUILD_DIR)/.binutils-built
 
 # Kernel
 KERNEL_BUILD_DIR=$(BUILD_DIR)/kernel
-C_SRCS=$(wildcard src/*.c)
-ASM_SRCS=$(wildcard src/*.S)
+C_SRCS=$(wildcard kernel/*.c)
+ASM_SRCS=$(wildcard kernel/*.S)
 C_OBJS:=$(addprefix $(KERNEL_BUILD_DIR)/, $(notdir $(C_SRCS:.c=.o)))
 ASM_OBJS:=$(addprefix $(KERNEL_BUILD_DIR)/, $(notdir $(ASM_SRCS:.S=.o)))
 OBJS:=$(C_OBJS) $(ASM_OBJS)
-CFLAGS=-std=gnu99 -ffreestanding -mcmodel=large -mno-red-zone -mno-mmx -mno-sse -mno-sse2 -g 
+CFLAGS=-std=gnu99 -ffreestanding -mcmodel=large -mno-red-zone -mno-mmx -mno-sse -mno-sse2 -g -Wall -Wextra
 
 default: all
 
@@ -30,23 +31,23 @@ cross: $(GCC_STAMP) $(BINUTILS_STAMP)
 # Kernel
 kernel: $(KERNEL_BUILD_DIR)/kernel.elf
 
-$(KERNEL_BUILD_DIR)/%.o: src/%.c $(GCC_STAMP) | $(KERNEL_BUILD_DIR) 
+$(KERNEL_BUILD_DIR)/%.o: kernel/%.c $(GCC_STAMP) | $(KERNEL_BUILD_DIR) 
 	$(CC) $(CFLAGS) -c $< -o $@
 
-$(KERNEL_BUILD_DIR)/%.o: src/%.S $(GCC_STAMP) | $(KERNEL_BUILD_DIR)
+$(KERNEL_BUILD_DIR)/%.o: kernel/%.S $(GCC_STAMP) | $(KERNEL_BUILD_DIR)
 	$(CC) $(CFLAGS) -c $< -o $@
 
 $(KERNEL_BUILD_DIR)/kernel.elf: $(OBJS) $(GCC_STAMP) | $(KERNEL_BUILD_DIR)
-	$(CC) $(CFLAGS) -nostdlib -T linker.ld $(OBJS) -o $@ -lgcc
+	$(CC) $(CFLAGS) -nostdlib -T kernel/linker.ld $(OBJS) -o $@ -lgcc
 
 # Bootloader
 loader: $(LOADER_BUILD_DIR)/loader.bin
-	
-$(LOADER_BUILD_DIR)/loader.bin: $(LOADER_BUILD_DIR)/loader.o $(GCC_STAMP) | $(LOADER_BUILD_DIR)
-	$(LD) -m elf_i386 -Ttext 0x7C00 -e _start --oformat binary -o $@ $<
 
-$(LOADER_BUILD_DIR)/loader.o: loader/loader.S $(GCC_STAMP) | $(LOADER_BUILD_DIR)
-	$(AS) --32 -o $@ $<
+$(LOADER_BUILD_DIR)/loader.bin: $(LOADER_BUILD_DIR)/loader.o | $(LOADER_BUILD_DIR)
+	$(LD) -m elf_i386 -Ttext 0x0000 --oformat binary -o $(LOADER_BUILD_DIR)/loader.bin $(LOADER_BUILD_DIR)/loader.o
+
+$(LOADER_BUILD_DIR)/loader.o: loader/loader.S | $(LOADER_BUILD_DIR)
+	$(AS) --32 -o $(LOADER_BUILD_DIR)/loader.o loader/loader.S
 
 # Cross
 $(GCC_STAMP): $(GCC_BUILD_DIR) $(BINUTILS_STAMP)
@@ -68,7 +69,7 @@ $(GCC_STAMP): $(GCC_BUILD_DIR) $(BINUTILS_STAMP)
 $(BINUTILS_STAMP): $(BINUTILS_BUILD_DIR)
 	export PATH="$(PREFIX)/bin:$$PATH" && \
 	pushd $(BINUTILS_BUILD_DIR) && \
-		../../binutils-gdb/configure --target="$(TARGET)" --prefix="$(PREFIX)" --with-sysroot --disable-nls --disable-werror --enable-multilib && \
+		../../binutils-gdb/configure --target="$(TARGET)" --prefix="$(PREFIX)" --with-sysroot --disable-nls --disable-werror --enable-multilib --enable-targets=all && \
 	popd && \
 	make -j8 -C $(BINUTILS_BUILD_DIR) && \
 	make -j8 -C $(BINUTILS_BUILD_DIR) install && \
@@ -79,7 +80,8 @@ $(BUILD_DIR) $(KERNEL_BUILD_DIR) $(GCC_BUILD_DIR) $(BINUTILS_BUILD_DIR) $(LOADER
 	mkdir -p $@
 
 run:
-	qemu-system-x86_64 -kernel $(KERNEL_BUILD_DIR)/kernel.elf 
+	qemu-system-i386 -drive format=raw,file=build/loader/loader.bin
+	#qemu-system-x86_64 -kernel $(KERNEL_BUILD_DIR)/kernel.elf 
 
 clean:
 	-rm -rf $(KERNEL_BUILD_DIR) $(LOADER_BUILD_DIR)

@@ -1,47 +1,28 @@
 [
   {
     "arguments": [
-      "./build/cross/bin/i686-elf-gcc",
+      "./build/cross/bin/x86_64-elf-gcc",
       "-std=gnu99",
       "-ffreestanding",
+      "-mcmodel=large",
+      "-mno-red-zone",
+      "-mno-mmx",
+      "-mno-sse",
+      "-mno-sse2",
       "-g",
+      "-Wall",
+      "-Wextra",
+      "-I/usr/include/efi",
+      "-I/usr/include/efi/x86_64",
+      "-fPIC",
+      "-fshort-wchar",
       "-c",
       "-o",
-      "build/boot.o",
-      "boot.s"
+      "build/loader/main.o",
+      "loader/main.c"
     ],
     "directory": "/mnt/Work/WaddleOS",
-    "file": "/mnt/Work/WaddleOS/boot.s",
-    "output": "/mnt/Work/WaddleOS/build/boot.o"
-  },
-  {
-    "arguments": [
-      "./build/cross/bin/i686-elf-gcc",
-      "-std=gnu99",
-      "-ffreestanding",
-      "-g",
-      "-c",
-      "-o",
-      "build/main.o",
-      "main.c"
-    ],
-    "directory": "/mnt/Work/WaddleOS",
-    "file": "/mnt/Work/WaddleOS/main.c",
-    "output": "/mnt/Work/WaddleOS/build/main.o"
-  },
-  {
-    "arguments": [
-      "./build/cross/bin/i686-elf-gcc",
-      "-std=gnu99",
-      "-ffreestanding",
-      "-g",
-      "-c",
-      "-o",
-      "build/term.o",
-      "term.c"
-    ],
-    "directory": "/mnt/Work/WaddleOS",
-    "file": "/mnt/Work/WaddleOS/term.c",
-    "output": "/mnt/Work/WaddleOS/build/term.o"
+    "file": "/mnt/Work/WaddleOS/loader/main.c",
+    "output": "/mnt/Work/WaddleOS/build/loader/main.o"
   }
 ]
