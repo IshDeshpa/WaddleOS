@@ -1,0 +1,91 @@
+.code16
+.section .text
+.global _start
+.type _start, @function
+_start:
+  cli
+  ljmp $0x0000, $go
+
+fb0: .ascii "Fail boot0\0"
+sb0: .ascii "Success boot0\0"
+
+go:
+  # Base of boot0 is 0x7C00
+  mov $0x0000, %ax # will be multiplied by 10 and added to whatever offset is used
+  mov %ax, %cs
+  mov %ax, %ds
+  mov %ax, %es
+  mov %ax, %fs
+  mov %ax, %gs
+  mov %ax, %ss
+  mov $0x0, %sp
+  
+  sti
+
+  # Reset disk to known state
+  mov $0x00, %ah
+  int $0x13
+
+  # Setup destination segment:offset for disk read
+  mov $0x0100, %ax    # Segment for 0x1000 physical
+  mov %ax, %es
+  xor %bx, %bx    # Offset
+
+  mov $0x02, %ah      # Read sectors
+  mov $0x11, %al      # 17 sectors
+  mov $0x00, %ch      # Cylinder 0
+  mov $0x02, %cl      # Sector 2 (boot1)
+  mov $0x00, %dh      # Head 0
+  mov $0x80, %dl      # Drive 0x80 (HDD)
+  int $0x13
+  
+  # Expect carry bit to contain success or fail
+  # This should move carry bit into %ax
+  xor %ax, %ax        # Clear AX
+  adc %ah, %ah        # Add CF to AX → AX = 0 or 1
+  
+  call _print
+
+  # else, jump to 0x1000 to start boot1
+  ljmp $0x100, $0x00
+
+.global _pchr
+.type _pchr, @function
+_pchr:
+  mov $0x0E, %ah
+  mov $0x00, %bh
+  int $0x10
+  ret
+
+.global _print
+.type _print, @function
+_print:
+  lea fb0, %si
+  # Carry bit in %ah
+  or %ah, %ah
+  jnz _plp
+  lea sb0, %si
+
+_plp:
+  # load ds:si into al and increment si
+  lodsb
+  
+  call _pchr
+
+  or %al, %al
+  jz _pdone
+  jmp _plp
+
+_pdone:
+  or %ah, %ah
+  jz _rt
+  
+  cli
+  hlt
+  jmp .
+
+_rt:
+  ret
+
+.org 510              # Pad to 510 bytes from _start
+.byte 0x55, 0xAA              # Boot signature
