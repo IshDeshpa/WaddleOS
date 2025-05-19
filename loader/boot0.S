@@ -6,8 +6,8 @@ _start:
   cli
   ljmp $0x0000, $go
 
-fb0: .ascii "Fail boot0\0"
-sb0: .ascii "Success boot0\0"
+fb0: .ascii "Fail boot0\n\r\0"
+sb0: .ascii "Success boot0\n\r\0"
 
 go:
   # Base of boot0 is 0x7C00
@@ -18,7 +18,7 @@ go:
   mov %ax, %fs
   mov %ax, %gs
   mov %ax, %ss
-  mov $0x0, %sp
+  mov $0x7C00, %sp
   
   sti
 
@@ -47,7 +47,7 @@ go:
   call _print
 
   # else, jump to 0x1000 to start boot1
-  ljmp $0x100, $0x00
+  ljmp $0x0000, $0x1000
 
 .global _pchr
 .type _pchr, @function
@@ -61,6 +61,7 @@ _pchr:
 .type _print, @function
 _print:
   lea fb0, %si
+  push %ax
   # Carry bit in %ah
   or %ah, %ah
   jnz _plp
@@ -77,6 +78,7 @@ _plp:
   jmp _plp
 
 _pdone:
+  pop %ax
   or %ah, %ah
   jz _rt
   

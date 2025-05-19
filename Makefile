@@ -45,7 +45,7 @@ loader: $(LOADER_BUILD_DIR)/disk.img
 
 $(LOADER_BUILD_DIR)/disk.img: $(LOADER_BUILD_DIR)/boot0.bin $(LOADER_BUILD_DIR)/boot1.bin | $(LOADER_BUILD_DIR)
 	dd if=$(LOADER_BUILD_DIR)/boot0.bin of=$(LOADER_BUILD_DIR)/disk.img bs=512 count=1
-	dd if=$(LOADER_BUILD_DIR)/boot1.bin of=$(LOADER_BUILD_DIR)/disk.img bs=512 seek=2
+	dd if=$(LOADER_BUILD_DIR)/boot1.bin of=$(LOADER_BUILD_DIR)/disk.img bs=512 seek=1
 
 $(LOADER_BUILD_DIR)/boot0.bin: $(LOADER_BUILD_DIR)/boot0.o | $(LOADER_BUILD_DIR)
 	$(LD) -m elf_i386 -e _start -Ttext 0x7C00 --oformat binary -o $@ $<
@@ -54,10 +54,10 @@ $(LOADER_BUILD_DIR)/boot0.o: loader/boot0.S | $(LOADER_BUILD_DIR)
 	$(AS) --32 -g -o $@ $<
 
 $(LOADER_BUILD_DIR)/boot1.bin: $(LOADER_BUILD_DIR)/boot1.o | $(LOADER_BUILD_DIR)
-	$(LD) -m elf_i386 -Ttext 0x1000 -nostdlib -N -e _start --oformat binary -o $@ $<
+	$(LD) -m elf_i386 -e _start -Ttext 0x1000 --oformat binary -o $@ $<
 
 $(LOADER_BUILD_DIR)/boot1.o: loader/boot1.S | $(LOADER_BUILD_DIR)
-	$(AS) --32 -o $@ $<
+	$(AS) --32 -g -o $@ $<
 
 # Cross
 $(GCC_STAMP): $(GCC_BUILD_DIR) $(BINUTILS_STAMP)
@@ -90,8 +90,10 @@ $(BUILD_DIR) $(KERNEL_BUILD_DIR) $(GCC_BUILD_DIR) $(BINUTILS_BUILD_DIR) $(LOADER
 	mkdir -p $@
 
 run:
-	qemu-system-i386 -drive format=raw,file=build/loader/boot0.bin
-	#qemu-system-x86_64 -kernel $(KERNEL_BUILD_DIR)/kernel.elf 
+	qemu-system-i386 -drive format=raw,file=build/loader/disk.img
+
+debug:
+	qemu-system-i386 -drive format=raw,file=build/loader/disk.img -S -s
 
 clean:
 	-rm -rf $(KERNEL_BUILD_DIR) $(LOADER_BUILD_DIR)
