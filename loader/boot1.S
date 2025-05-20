@@ -10,7 +10,7 @@ _start:
   mov $0x0000, %ax
   mov %ax, %ds
   mov %ax, %ss
-  mov $0xE000, %sp
+  mov $0x6C00, %sp
 
   # A20 Gate
 
@@ -33,29 +33,28 @@ _lp_inp2:
   outb %al, $0x60
 
   # A20 now enabled!
-  lea a2, %si
+  mov $a2, %si
   call _print
 
+  cli
   lgdt gdt_desc
   mov %cr0, %eax
   or $1, %eax
   mov %eax, %cr0
-_lp: jmp _lp
   
   ljmp $0x08, $_clear_pipe
 
 .code32
 _clear_pipe:
-  cli
-  mov $0x08, %ax
-  mov %ax, %ds
-  mov %ax, %ss
-
-  mov $0xf000, %sp
-
-  sti
-
-lp: jmp lp
+  mov $0x10, %ax       # Load data segment selector
+  mov %ax, %ds         # Load data segment
+  mov %ax, %es         # Load extra segment
+  mov %ax, %fs         # Load FS segment
+  mov %ax, %gs         # Load GS segment
+  mov %ax, %ss         # Load stack segment
+  mov $0x9FC00, %esp   # Set stack pointer
+  
+  jmp .
 
 .code16
 .global _pchr
@@ -110,12 +109,12 @@ gdt_code:
 gdt_data:
   .word 0xFFFF
   .word 0
-  .word 0
+  .byte 0
   .byte 0b10010010
   .byte 0b11001111
   .byte 0
 gdt_end:
 gdt_desc:
-  .word gdt_end - gdt // size of gdt (0-15)
+  .word gdt_end - gdt - 1// size of gdt (0-15)
   .long gdt       // gdt address (16-47)
 
