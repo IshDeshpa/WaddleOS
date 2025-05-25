@@ -11,6 +11,7 @@ CC=$(CROSS_BUILD_DIR)/bin/$(TARGET)-gcc
 AS=$(CROSS_BUILD_DIR)/bin/$(TARGET)-as
 LD=$(CROSS_BUILD_DIR)/bin/$(TARGET)-ld
 OBJCOPY=$(CROSS_BUILD_DIR)/bin/$(TARGET)-objcopy
+OBJDUMP=$(CROSS_BUILD_DIR)/bin/$(TARGET)-objdump
 GCC_STAMP=$(CROSS_BUILD_DIR)/.gcc-built
 BINUTILS_STAMP=$(CROSS_BUILD_DIR)/.binutils-built
 
@@ -94,6 +95,9 @@ run:
 
 debug:
 	qemu-system-i386 -drive format=raw,file=build/loader/disk.img -S -s
+
+dump: $(LOADER_BUILD_DIR)/boot0.o $(BINUTILS_STAMP)
+	$(OBJDUMP) -d $< -m i8086
 
 clean:
 	-rm -rf $(KERNEL_BUILD_DIR) $(LOADER_BUILD_DIR)
