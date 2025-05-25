@@ -16,7 +16,7 @@ dap:
 .word 1	   # number of sectors to read (increase if needed)
 .word 0x0000
 .word 0x0100	# segment (0x0100) + offset (0x0000)
-.long 1	   # sector to be read (2)
+.long 5	   # sector to be read (5)
 .long 0
 
 go:
@@ -38,28 +38,20 @@ go:
   # Setup INT 13h extension
   mov $0x41, %ah # read sectors
   mov $0x55AA, %bx # offset
-  mov $0x80, %dl # drive 0x80 (HDD)
+  #mov $0x80, %dl # drive 0x80 (HDD)
   int $0x13
+  
+  # Error checking lol
+  jc .
 
   lea dap, %si	 # disk address packet in DS:SI
   mov $0x42, %ah # read disk
-  mov $0x80, %dl # drive 0x80 (HDD)
+  #mov $0x80, %dl # drive 0x80 (HDD)
   int $0x13
 
+  # Error checking lol
   jc .
 
-  # mov $0x0100, %ax    # Segment for 0x1000 physical
-  # mov %ax, %es
-  # xor %bx, %bx    # Offset
-
-  # mov $0x02, %ah      # Read sectors
-  # mov $0x11, %al      # 17 sectors
-  # mov $0x00, %ch      # Cylinder 0
-  # mov $0x02, %cl      # Sector 2 (boot1)
-  # mov $0x00, %dh      # Head 0
-  # mov $0x80, %dl      # Drive 0x80 (HDD)
-  # int $0x13
-  
   # Expect carry bit to contain success or fail
   # This should move carry bit into %ax
   xor %ax, %ax        # Clear AX
