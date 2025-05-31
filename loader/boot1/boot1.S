@@ -1,6 +1,9 @@
 .code16
 
-.section .text
+.global term_print
+.global term_readcursor
+
+.section .text._start
 .global _start
 .type _start, @function
 
@@ -34,7 +37,7 @@ _lp_inp2:
 
   # A20 now enabled!
   mov $a2, %si
-  call _print
+  call _print16
 
   cli
   lgdt gdt_desc
@@ -53,37 +56,163 @@ _clear_pipe:
   mov %ax, %gs         # Load GS segment
   mov %ax, %ss         # Load stack segment
   mov $0x9FC00, %esp   # Set stack pointer
+
+  call term_readcursor
+
+  mov $pm, %eax
+  push %eax
+  call term_print
+  add $4, %esp
+
+  jmp main
+
+.section .text
+.global load_sector
+.type load_sector, @function
+
+_save_cr0: 
+  .long 0
+_save_sp:
+  .long 0
+
+load_sector:
+  movzbl 2(%esp), %eax # sector number
+  sal $8, %eax
+  mov 4(%esp), %ax # number of sectors (< 24)
+
+  mov 8(%esp), %ebx # address 
   
-  jmp .
+  cmp $24, %ax
+  jg _ret
+
+  mov %esp, _save_sp
+
+  # 1) change dap
+  lea dap, %ecx
+  movw %ax, 2(%ecx) # move number of sectors to dap
+  shr $8, %eax
+  movw %ax, 8(%ecx) # move sector number to dap
+
+  # 2) jump to real mode
+  cli 
+  
+  # disable paging just in case it's enabled. also disables 16-bit protected mode
+  mov %cr0, %eax
+  mov %eax, [_save_cr0]
+  and $0x7FFFFFFC, %eax
+  mov %eax, %cr0
+  ljmp $0x0000, $_rmode
 
 .code16
-.global _pchr
-.type _pchr, @function
-_pchr:
+_rmode:
+  # reload segment registers
+  mov $0x7C00, %sp
+  mov $0, %ax
+  mov %ax, %ds
+  mov %ax, %es
+  mov %ax, %ss
+
+  lidt ridtd
+
+  sti
+
+  # Reset disk to known state
+  mov $0x0000, %ax
+  int $0x13
+
+  # 3) load to disk buffer   
+  # Setup INT 13h extension
+  mov $0x4100, %ax # read sectors
+  mov $0x55AA, %bx # offset
+  mov $0x80, %dl # drive 0x80 (HDD)
+  int $0x13
+  
+  # Error checking lol
+  jc .
+
+  lea dap, %si	 # disk address packet in DS:SI
+  mov $0x42, %ah # read disk
+  mov $0x80, %dl # drive 0x80 (HDD)
+  int $0x13
+
+  # Error checking lol
+  jc .
+
+
+  # 4) jump to protected mode
+  cli
+  lgdt gdt_desc
+  mov %cr0, %eax
+  or $1, %eax
+  mov %eax, %cr0
+  
+  ljmp $0x08, $_clear_pipe2
+
+.code32
+_clear_pipe2:
+  mov $0x10, %ax       # Load data segment selector
+  mov %ax, %ds         # Load data segment
+  mov %ax, %es         # Load extra segment
+  mov %ax, %fs         # Load FS segment
+  mov %ax, %gs         # Load GS segment
+  mov %ax, %ss         # Load stack segment
+  mov _save_sp, %esp   # Set stack pointer
+  mov _save_cr0, %eax
+  mov %eax, %cr0
+  
+  # 5) load to appropriate address
+  mov $0x8000, %eax
+  mov 4(%esp), %edx
+_mem_lp:
+  movl (%eax), %ecx
+  movl %ecx, (%ebx)
+  add $4, %eax
+  add $4, %ebx
+  add $-4, %edx
+  jne _mem_lp
+
+_ret:
+  ret
+
+.code16
+.global _pchr16
+.type _pchr16, @function
+_pchr16:
   mov $0x0E, %ah
   mov $0x00, %bh
   int $0x10
   ret
 
-.global _print
-.type _print, @function
-_print:
+.global _print16
+.type _print16, @function
+_print16:
   # Expects correct pointer in si
   # load ds:si into al and increment si
   lodsb 
-  call _pchr
+  call _pchr16
 
   or %al, %al
-  jz _rt
-  jmp _print
+  jz _prt16
+  jmp _print16
 
-_rt:
+_prt16:
   ret
-  
-fb0: .string "Fail boot1"
-sb0: .string "Success boot1"
+
+.section .data
+fb0: .ascii "Fail boot1\n\r\0"
+sb0: .ascii "Success boot1\n\r\0"
 a2: .ascii "A20 Gate Enable!\n\r\0"
 pm: .ascii "Protected Mode Enable!\n\r\0"
+
+.align 4
+dap:
+  .byte 0x10 	# size of DAP (16 bytes)
+  .byte 0x00
+  .word 24	# number of sectors to read (size of disk buffer)
+  .word 0x0000
+  .word 0x0800	# segment (0x0800, disk buffer) + offset (0x0000)
+  .long 12	# sector to be read (starts at 12)
+  .long 0  
 
 .align 4
 gdt:
@@ -118,3 +247,8 @@ gdt_desc:
   .word gdt_end - gdt - 1// size of gdt (0-15)
   .long gdt       // gdt address (16-47)
 
+.align 16
+
+ridtd:
+  .word 0x3FF
+  .long 0x0

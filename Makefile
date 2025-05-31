@@ -21,6 +21,7 @@ ASM_SRCS=$(wildcard kernel/*.S)
 C_OBJS:=$(addprefix $(KERNEL_BUILD_DIR)/, $(notdir $(C_SRCS:.c=.o)))
 ASM_OBJS:=$(addprefix $(KERNEL_BUILD_DIR)/, $(notdir $(ASM_SRCS:.S=.o)))
 OBJS:=$(C_OBJS) $(ASM_OBJS)
+CINC=-Ikernel/
 CFLAGS=-std=gnu99 -ffreestanding -mcmodel=large -mno-red-zone -mno-mmx -mno-sse -mno-sse2 -g -Wall -Wextra -nostdlib
 
 # Loader
@@ -31,7 +32,8 @@ BOOT1_ASM_SRCS=$(wildcard loader/boot1/*.S)
 BOOT1_C_OBJS:=$(addprefix $(BOOT1_BUILD_DIR)/, $(notdir $(BOOT1_C_SRCS:.c=.o)))
 BOOT1_ASM_OBJS:=$(addprefix $(BOOT1_BUILD_DIR)/, $(notdir $(BOOT1_ASM_SRCS:.S=.o)))
 BOOT1_OBJS:=$(BOOT1_C_OBJS) $(BOOT1_ASM_OBJS)
-BOOT1_CFLAGS=-std=gnu99 -ffreestanding -m32 -mno-red-zone -mno-mmx -mno-sse -mno-sse2 -g -Wall -Wextra -nostdlib
+BOOT1_CINC=-Iloader/boot1/
+BOOT1_CFLAGS=-std=gnu99 -ffreestanding -m32 -mno-red-zone -mno-mmx -mno-sse -mno-sse2 -g -Wall -Wextra -nostdlib -O0
 
 default: all
 
@@ -43,18 +45,19 @@ disk: $(BUILD_DIR)/disk.img
 $(BUILD_DIR)/disk.img: kernel loader
 	dd if=$(LOADER_BUILD_DIR)/boot0.bin of=$(BUILD_DIR)/disk.img bs=512 count=1
 	dd if=$(LOADER_BUILD_DIR)/boot1.bin of=$(BUILD_DIR)/disk.img bs=512 seek=5
+	dd if=$(KERNEL_BUILD_DIR)/kernel.elf of=$(BUILD_DIR)/disk.img bs=512 seek=12
 
 # Kernel
 kernel: $(KERNEL_BUILD_DIR)/kernel.elf
 
 $(KERNEL_BUILD_DIR)/%.o: kernel/%.c $(GCC_STAMP) | $(KERNEL_BUILD_DIR) 
-	$(CC) $(CFLAGS) -c $< -o $@
+	$(CC) $(CFLAGS) $(CINC) -c $< -o $@
 
 $(KERNEL_BUILD_DIR)/%.o: kernel/%.S $(GCC_STAMP) | $(KERNEL_BUILD_DIR)
-	$(CC) $(CFLAGS) -c $< -o $@
+	$(CC) $(CFLAGS) $(CINC) -c $< -o $@
 
 $(KERNEL_BUILD_DIR)/kernel.elf: $(OBJS) $(GCC_STAMP) | $(KERNEL_BUILD_DIR)
-	$(CC) $(CFLAGS) -T kernel/linker.ld $(OBJS) -o $@ -lgcc
+	$(CC) $(CFLAGS) $(CINC) -T kernel/linker.ld $(OBJS) -o $@ -lgcc
 
 # Bootloader
 loader: $(LOADER_BUILD_DIR)/boot0.bin $(LOADER_BUILD_DIR)/boot1.bin | $(LOADER_BUILD_DIR)
@@ -66,14 +69,17 @@ $(LOADER_BUILD_DIR)/boot0.o: loader/boot0.S | $(LOADER_BUILD_DIR)
 	$(AS) --32 -g -o $@ $<
 
 $(BOOT1_BUILD_DIR)/%.o: loader/boot1/%.c | $(BOOT1_BUILD_DIR)
-	$(CC) $(BOOT1_CFLAGS) -c $< -o $@
+	$(CC) $(BOOT1_CFLAGS) $(BOOT1_CINC) -c $< -o $@
 
 $(BOOT1_BUILD_DIR)/%.o: loader/boot1/%.S | $(BOOT1_BUILD_DIR)
-	$(AS) --32 -g -o $@ $<
+	$(CC) $(BOOT1_CFLAGS) $(BOOT1_CINC) -m32 -g -c -o $@ $<
 
-$(LOADER_BUILD_DIR)/boot1.bin: $(BOOT1_OBJS) | $(LOADER_BUILD_DIR)
-	$(LD) -m elf_i386 -e _start -Ttext 0x1000 --oformat binary -o $@ $(BOOT1_OBJS)
+$(LOADER_BUILD_DIR)/boot1.elf: $(BOOT1_OBJS) | $(LOADER_BUILD_DIR)
+	$(LD) $(BOOT1_CINC) -m elf_i386 -e _start -T loader/boot1/linker.ld -o $@ $(BOOT1_OBJS)
 
+$(LOADER_BUILD_DIR)/boot1.bin: $(LOADER_BUILD_DIR)/boot1.elf $(BOOT1_OBJS) | $(LOADER_BUILD_DIR)
+	$(OBJCOPY) -O binary --strip-all $< $@
+	
 # Cross
 cross: $(GCC_STAMP) $(BINUTILS_STAMP) 
 
@@ -112,7 +118,16 @@ run:
 debug:
 	qemu-system-i386 -drive format=raw,file=build/disk.img -S -s
 
-dump: $(LOADER_BUILD_DIR)/boot0.o $(BINUTILS_STAMP)
+gdb:
+	$(CROSS_BUILD_DIR)/bin/x86_64-elf-gdb $(LOADER_BUILD_DIR)/boot1.elf
+
+mon:
+	qemu-system-i386 -drive format=raw,file=build/disk.img -monitor stdio
+
+dump0: $(LOADER_BUILD_DIR)/boot0.o $(BINUTILS_STAMP)
+	$(OBJDUMP) -d $< -m i8086
+
+dump1: $(LOADER_BUILD_DIR)/boot1.elf $(BINUTILS_STAMP)
 	$(OBJDUMP) -d $< -m i8086
 
 clean:
@@ -121,4 +136,4 @@ clean:
 clean-cross:
 	-rm -rf $(CROSS_BUILD_DIR) $(GCC_BUILD_DIR) $(BINUTILS_BUILD_DIR)
 
-.PHONY: all clean run cross kernel gcc binutils loader
+.PHONY: all clean run cross kernel gcc binutils loader dump0 dump1 disk mon debug clean-cross gdb
