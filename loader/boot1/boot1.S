@@ -1,5 +1,3 @@
-.code16
-
 .global term_print
 .global term_readcursor
 
@@ -7,6 +5,7 @@
 .global _start
 .type _start, @function
 
+.code16
 _start:
   cli
  
@@ -66,59 +65,68 @@ _clear_pipe:
 
   jmp main
 
+.code32
 .section .text
-.global load_sector
-.type load_sector, @function
+.global load_sector_asm
+.type load_sector_asm, @function
 
 _save_cr0: 
   .long 0
 _save_sp:
   .long 0
 
-load_sector:
+load_sector_asm:
   movzbl 2(%esp), %eax # sector number
-  sal $8, %eax
-  mov 4(%esp), %ax # number of sectors (< 24)
-
-  mov 8(%esp), %ebx # address 
+  mov 4(%esp), %ebx # number of sectors (< 24)
   
-  cmp $24, %ax
+  cmp $24, %ebx
   jg _ret
 
   mov %esp, _save_sp
 
   # 1) change dap
-  lea dap, %ecx
-  movw %ax, 2(%ecx) # move number of sectors to dap
-  shr $8, %eax
-  movw %ax, 8(%ecx) # move sector number to dap
+  lea dap, %edx
+  movw %bx, 2(%edx) # move number of sectors to dap
+  movw %ax, 8(%edx) # move sector number to dap
 
-  # 2) jump to real mode
+  # 2) jump to 16-bit protected mode
   cli 
-  
-  # disable paging just in case it's enabled. also disables 16-bit protected mode
-  mov %cr0, %eax
-  mov %eax, [_save_cr0]
-  and $0x7FFFFFFC, %eax
-  mov %eax, %cr0
-  ljmp $0x0000, $_rmode
+
+  lgdt gdt_desc 
+
+  ljmp $0x18, $0x1400
 
 .code16
-_rmode:
+.section .pmode16, "ax"
+.global _pmode16_load_sector
+_pmode16_load_sector:
+  cli
+  mov $0x18, %ax
+  mov %ax, %ds
+  mov %ax, %es
+
+  # disable paging just in case it's enabled. also disables 16-bit protected mode 
+  mov %cr0, %eax
+  mov %eax, [_save_cr0]
+  and $0x7FFFFFFE, %eax
+  mov %eax, %cr0
+
+  ljmp $0x0000, $0x1500
+
+.section .rmode, "ax"
+.global _rmode_load_sector
+_rmode_load_sector:
   # reload segment registers
-  mov $0x7C00, %sp
-  mov $0, %ax
+  cli
+  xor %ax, %ax
   mov %ax, %ds
   mov %ax, %es
   mov %ax, %ss
+  mov $0x7C00, %sp
 
   lidt ridtd
 
   sti
-
-  # Reset disk to known state
-  mov $0x0000, %ax
-  int $0x13
 
   # 3) load to disk buffer   
   # Setup INT 13h extension
@@ -138,7 +146,6 @@ _rmode:
   # Error checking lol
   jc .
 
-
   # 4) jump to protected mode
   cli
   lgdt gdt_desc
@@ -146,7 +153,10 @@ _rmode:
   or $1, %eax
   mov %eax, %cr0
   
-  ljmp $0x08, $_clear_pipe2
+  # similarly jank shit
+  .byte 0xEA
+  .word _clear_pipe2
+  .word 0x0008
 
 .code32
 _clear_pipe2:
@@ -159,18 +169,9 @@ _clear_pipe2:
   mov _save_sp, %esp   # Set stack pointer
   mov _save_cr0, %eax
   mov %eax, %cr0
-  
-  # 5) load to appropriate address
-  mov $0x8000, %eax
-  mov 4(%esp), %edx
-_mem_lp:
-  movl (%eax), %ecx
-  movl %ecx, (%ebx)
-  add $4, %eax
-  add $4, %ebx
-  add $-4, %edx
-  jne _mem_lp
 
+
+  # 5) load to appropriate address (done in C routine)
 _ret:
   ret
 
@@ -211,7 +212,7 @@ dap:
   .word 24	# number of sectors to read (size of disk buffer)
   .word 0x0000
   .word 0x0800	# segment (0x0800, disk buffer) + offset (0x0000)
-  .long 12	# sector to be read (starts at 12)
+  .long 24	# sector to be read (starts at 24) 
   .long 0  
 
 .align 4
@@ -242,6 +243,23 @@ gdt_data:
   .byte 0b10010010
   .byte 0b11001111
   .byte 0
+gdt_code16:
+  .word 0xFFFF // hex FFFF; 4GB limit for this code segment
+  .word 0 // base address is 0
+  .byte 0 // bits 16-23 for base address
+  .byte 0b10011010  // bit 8: access flag (0)
+            // bit 9: readable? (1)
+            // bit 10: conforming (can less privileged segments call this segment?) (0)
+            // bit 11: execute? (1)
+            // bit 12: system (0) or code/data (1)? (1)
+            // bit 14-13: privilege level (00 most privileged)
+            // bit 15: present? (1)
+  .byte 0b00001111  // bit 19-16: top four bits of segment limit
+            // bit 20: available for use by us (do whatever)
+            // bit 21: reserved by intel
+            // bit 22: 16-bit (0) or 32-bit (1) segment?
+            // bit 23: 4kB multiplier if set
+  .byte 0           // bits 31-24: top four bits of base address
 gdt_end:
 gdt_desc:
   .word gdt_end - gdt - 1// size of gdt (0-15)

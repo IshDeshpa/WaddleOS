@@ -33,7 +33,7 @@ BOOT1_C_OBJS:=$(addprefix $(BOOT1_BUILD_DIR)/, $(notdir $(BOOT1_C_SRCS:.c=.o)))
 BOOT1_ASM_OBJS:=$(addprefix $(BOOT1_BUILD_DIR)/, $(notdir $(BOOT1_ASM_SRCS:.S=.o)))
 BOOT1_OBJS:=$(BOOT1_C_OBJS) $(BOOT1_ASM_OBJS)
 BOOT1_CINC=-Iloader/boot1/
-BOOT1_CFLAGS=-std=gnu99 -ffreestanding -m32 -mno-red-zone -mno-mmx -mno-sse -mno-sse2 -g -Wall -Wextra -nostdlib -O0
+BOOT1_CFLAGS=-std=gnu99 -ffreestanding -m32 -mno-red-zone -mno-mmx -mno-sse -mno-sse2 -g -Wall -Wextra -nostdlib -Oz
 
 default: all
 
@@ -45,7 +45,7 @@ disk: $(BUILD_DIR)/disk.img
 $(BUILD_DIR)/disk.img: kernel loader
 	dd if=$(LOADER_BUILD_DIR)/boot0.bin of=$(BUILD_DIR)/disk.img bs=512 count=1
 	dd if=$(LOADER_BUILD_DIR)/boot1.bin of=$(BUILD_DIR)/disk.img bs=512 seek=5
-	dd if=$(KERNEL_BUILD_DIR)/kernel.elf of=$(BUILD_DIR)/disk.img bs=512 seek=12
+	dd if=$(KERNEL_BUILD_DIR)/kernel.elf of=$(BUILD_DIR)/disk.img bs=512 seek=24
 
 # Kernel
 kernel: $(KERNEL_BUILD_DIR)/kernel.elf
@@ -78,7 +78,7 @@ $(LOADER_BUILD_DIR)/boot1.elf: $(BOOT1_OBJS) | $(LOADER_BUILD_DIR)
 	$(LD) $(BOOT1_CINC) -m elf_i386 -e _start -T loader/boot1/linker.ld -o $@ $(BOOT1_OBJS)
 
 $(LOADER_BUILD_DIR)/boot1.bin: $(LOADER_BUILD_DIR)/boot1.elf $(BOOT1_OBJS) | $(LOADER_BUILD_DIR)
-	$(OBJCOPY) -O binary --strip-all $< $@
+	$(OBJCOPY) -O binary --set-section-flags .rmode=alloc,load,contents  --strip-all $< $@
 	
 # Cross
 cross: $(GCC_STAMP) $(BINUTILS_STAMP) 
@@ -123,6 +123,9 @@ gdb:
 
 mon:
 	qemu-system-i386 -drive format=raw,file=build/disk.img -monitor stdio
+
+trace:
+	qemu-system-i386 -drive format=raw,file=build/disk.img -d cpu,exec,in_asm -D qemu.log
 
 dump0: $(LOADER_BUILD_DIR)/boot0.o $(BINUTILS_STAMP)
 	$(OBJDUMP) -d $< -m i8086
