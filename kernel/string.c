@@ -63,6 +63,28 @@ void    *memmove(void *to, const void *from, size_t numBytes){
   return to;
 }
 
-void    *memset(void *, int, size_t){
+int      memcmp(const void *a, const void *b, size_t n){
+  if (n == 0) return 0;
+
+  uintptr_t *a_word = (uintptr_t *)a;
+  uintptr_t *b_word = (uintptr_t *)b;
+
+  while(n > sizeof(uintptr_t) && *a_word == *b_word){
+    a_word++;
+    b_word++;
+    n-=sizeof(uintptr_t);
+  }
   
+  uint8_t *a_8 = (uint8_t*)a_word;
+  uint8_t *b_8 = (uint8_t*)b_word;
+  for(uint8_t i=0; i<sizeof(uintptr_t) && n>0; i++, n--){
+    if(a_8[i] != b_8[i]){
+      return a_8[i] - b_8[i];
+    }
+  }
+
+  return 0;
+}
+
+void    *memset(void *, int, size_t){  
 }
