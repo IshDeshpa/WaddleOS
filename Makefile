@@ -45,7 +45,7 @@ disk: $(BUILD_DIR)/disk.img
 $(BUILD_DIR)/disk.img: kernel loader
 	dd if=$(LOADER_BUILD_DIR)/boot0.bin of=$(BUILD_DIR)/disk.img bs=512 count=1
 	dd if=$(LOADER_BUILD_DIR)/boot1.bin of=$(BUILD_DIR)/disk.img bs=512 seek=5
-	dd if=$(KERNEL_BUILD_DIR)/kernel.elf of=$(BUILD_DIR)/disk.img bs=512 seek=24
+	dd if=$(KERNEL_BUILD_DIR)/kernel.elf of=$(BUILD_DIR)/disk.img bs=512 seek=12
 
 # Kernel
 kernel: $(KERNEL_BUILD_DIR)/kernel.elf

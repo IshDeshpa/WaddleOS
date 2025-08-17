@@ -24,14 +24,12 @@ SECTIONS
   {
     *(.bss COMMON)
   }
-
-  . = 0x1400;
+  
   .pmode16 :
   {
     *(.pmode16)
   }
 
-  . = 0x1500;
   .rmode :
   {
     *(.rmode)

@@ -54,7 +54,7 @@ sb0: .ascii "Success boot0\n\r\0"
 dap:
   .byte 0x10 # size of DAP (16 bytes)
   .byte 0x00
-  .word 3	   # number of sectors to read (increase if needed)
+  .word 7   # number of sectors to read (increase if needed)
   .word 0x0000
   .word 0x0100	# segment (0x0100) + offset (0x0000)
   .long 5	   # sector to be read (5)

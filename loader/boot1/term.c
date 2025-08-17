@@ -100,12 +100,25 @@ void term_putc(char c){
 	_vga_write(row-1, col, _vga_read(row, col));
       }
     }
+    // Clear current row
+    for(uint8_t col=0; col<VGA_COLS; col++){
+      vga_write(VGA_ROWS-1, col, 0x0, 0xF, ' ');
+    }
     term_col = 0;
     term_row = VGA_ROWS-1;
   }
+
+}
+
+static const char *hexdig_lookup = "0123456789ABCDEF";
+void term_putbyte(uint8_t b){
+  term_putc(hexdig_lookup[(b&0xF0) >> 4]);
+  term_putc(hexdig_lookup[b&0xF]);
 }
 
 #define MAX_STR_SIZE 500
 void term_print(const char* str){
   for(size_t i=0; str[i]!='\0' && i < MAX_STR_SIZE; i++) term_putc(str[i]);
 }
+/*
+*/

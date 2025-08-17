@@ -1,14 +1,33 @@
-.set ALIGN, 1<<0
-.set MEMINFO, 1<<1
-.set FLAGS, ALIGN | MEMINFO
-.set MAGIC, 0xE85250D6
-.set CHECKSUM, -(MAGIC+FLAGS)
+#define ASM_FILE 1
+#include "multiboot2.h"
 
 .section .multiboot
-.align 4
-.long MAGIC
-.long FLAGS
-.long CHECKSUM
+multiboot_hdr:
+  .long MULTIBOOT2_HEADER_MAGIC
+  .long MULTIBOOT_ARCHITECTURE_I386
+  .long multiboot_hdr_end - multiboot_hdr
+  .long -(MULTIBOOT2_HEADER_MAGIC + MULTIBOOT_ARCHITECTURE_I386 + multiboot_hdr_end - multiboot_hdr)
+multiboot_tag_align:
+  .align MULTIBOOT_TAG_ALIGN
+  .word MULTIBOOT_HEADER_TAG_MODULE_ALIGN
+  .word 0
+  .long 8
+multiboot_tag_console_flags:
+  .align MULTIBOOT_TAG_ALIGN
+  .word MULTIBOOT_HEADER_TAG_CONSOLE_FLAGS
+  .word 0
+  .long 12
+  .long 3
+multiboot_tag_framebuffer:
+  .align MULTIBOOT_TAG_ALIGN
+  .word MULTIBOOT_HEADER_TAG_FRAMEBUFFER
+  .word 0
+  .long 20
+  .long 0
+  .long 0
+  .long 32
+multiboot_hdr_end:
+  .align MULTIBOOT_TAG_ALIGN
 
 .section .bss
 .align 16

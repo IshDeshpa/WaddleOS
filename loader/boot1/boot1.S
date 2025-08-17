@@ -76,30 +76,40 @@ _save_sp:
   .long 0
 
 load_sector_asm:
-  movzbl 2(%esp), %eax # sector number
-  mov 4(%esp), %ebx # number of sectors (< 24)
-  
-  cmp $24, %ebx
-  jg _ret
+  # Starts in 32-bit pmode
 
+  movzwl 4(%esp), %eax # sector number
+  movzwl 8(%esp), %ecx # number of sectors (< 24)
+  
+  # Make sure sector number >= 12
+  cmp $12, %eax
+  jnge _ret
+
+  # Make sure number of sectors <= 24
+  cmp $24, %ecx
+  jnle _ret
+  
+  pusha
   mov %esp, _save_sp
 
   # 1) change dap
   lea dap, %edx
-  movw %bx, 2(%edx) # move number of sectors to dap
+  movw %cx, 2(%edx) # move number of sectors to dap
   movw %ax, 8(%edx) # move sector number to dap
 
   # 2) jump to 16-bit protected mode
   cli 
 
   lgdt gdt_desc 
-
-  ljmp $0x18, $0x1400
+  
+  # 3rd segment in GDT, Pmode-16 address (defined in linker.ld)
+  ljmp $0x18, $_pmode16_load_sector
 
 .code16
 .section .pmode16, "ax"
 .global _pmode16_load_sector
 _pmode16_load_sector:
+  # 16-bit pmode
   cli
   mov $0x18, %ax
   mov %ax, %ds
@@ -111,11 +121,13 @@ _pmode16_load_sector:
   and $0x7FFFFFFE, %eax
   mov %eax, %cr0
 
-  ljmp $0x0000, $0x1500
+  # Real mode address, defined in linker.ld
+  ljmp $0x0000, $_rmode_load_sector
 
 .section .rmode, "ax"
 .global _rmode_load_sector
 _rmode_load_sector:
+  # 16-bit rmode
   # reload segment registers
   cli
   xor %ax, %ax
@@ -134,7 +146,7 @@ _rmode_load_sector:
   mov $0x55AA, %bx # offset
   mov $0x80, %dl # drive 0x80 (HDD)
   int $0x13
-  
+ 
   # Error checking lol
   jc .
 
@@ -168,10 +180,12 @@ _clear_pipe2:
   mov %ax, %ss         # Load stack segment
   mov _save_sp, %esp   # Set stack pointer
   mov _save_cr0, %eax
+  and $~0x80000000, %eax # no paging boooooo
   mov %eax, %cr0
 
-
   # 5) load to appropriate address (done in C routine)
+  popa
+
 _ret:
   ret
 
@@ -195,7 +209,7 @@ _print16:
   or %al, %al
   jz _prt16
   jmp _print16
-
+  
 _prt16:
   ret
 
