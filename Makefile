@@ -1,5 +1,7 @@
 BUILD_DIR=./build
 
+DEBUG ?= 0
+
 # Cross
 CROSS_BUILD_DIR=$(BUILD_DIR)/cross
 GCC_BUILD_DIR=$(BUILD_DIR)/gcc
@@ -35,6 +37,20 @@ BOOT1_OBJS:=$(BOOT1_C_OBJS) $(BOOT1_ASM_OBJS)
 BOOT1_CINC=-Iloader/boot1/
 BOOT1_CFLAGS=-std=gnu99 -ffreestanding -m32 -mno-red-zone -mno-mmx -mno-sse -mno-sse2 -g -Wall -Wextra -nostdlib -Oz
 
+# QEMU
+QEMU_FLAGS=-cpu qemu64
+
+ARCH?=64
+ifeq ($(ARCH),64)
+	QEMU_VER=x86_64
+else
+	QEMU_VER=i386
+endif
+
+ifeq ($(DEBUG),1)
+CFLAGS       += -DDEBUG
+BOOT1_CFLAGS += -DDEBUG
+endif
 default: all
 
 all: disk 
@@ -113,19 +129,19 @@ $(BUILD_DIR) $(KERNEL_BUILD_DIR) $(GCC_BUILD_DIR) $(BINUTILS_BUILD_DIR) $(LOADER
 	mkdir -p $@
 
 run:
-	qemu-system-i386 -drive format=raw,file=build/disk.img
+	qemu-system-$(QEMU_VER) $(QEMU_FLAGS) -drive format=raw,file=build/disk.img
 
 debug:
-	qemu-system-i386 -drive format=raw,file=build/disk.img -S -s
+	qemu-system-$(QEMU_VER) $(QEMU_FLAGS) -drive format=raw,file=build/disk.img -S -s
 
 gdb:
 	$(CROSS_BUILD_DIR)/bin/x86_64-elf-gdb $(LOADER_BUILD_DIR)/boot1.elf
 
 mon:
-	qemu-system-i386 -drive format=raw,file=build/disk.img -monitor stdio
+	qemu-system-$(QEMU_VER) $(QEMU_FLAGS) -drive format=raw,file=build/disk.img -monitor stdio
 
 trace:
-	qemu-system-i386 -drive format=raw,file=build/disk.img -d cpu,exec,in_asm -D qemu.log
+	qemu-system-$(QEMU_VER) $(QEMU_FLAGS) -drive format=raw,file=build/disk.img -d cpu,exec,in_asm -D qemu.log
 
 dump0: $(LOADER_BUILD_DIR)/boot0.o $(BINUTILS_STAMP)
 	$(OBJDUMP) -d $< -m i8086

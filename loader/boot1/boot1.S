@@ -44,11 +44,12 @@ _lp_inp2:
   or $1, %eax
   mov %eax, %cr0
   
-  ljmp $0x08, $_clear_pipe
+  # 32-bit mode (index 2)
+  ljmp $0x10, $_clear_pipe
 
 .code32
 _clear_pipe:
-  mov $0x10, %ax       # Load data segment selector
+  mov $0x20, %ax       # Load data segment selector
   mov %ax, %ds         # Load data segment
   mov %ax, %es         # Load extra segment
   mov %ax, %fs         # Load FS segment
@@ -65,11 +66,157 @@ _clear_pipe:
 
   jmp main
 
-.code32
+.equ p4t_addr, 0x10000
+.equ p3t_addr, 0x11000
+.equ p2t_addr, 0x12000
+.equ p1t_addr, 0x13000
+.equ pt_addr_mask, 0xffffffffff000
+.equ pt_present, 0x1
+.equ pt_readable, 0x2
+.equ pt_size, 4096
+
+.equ pt_entries, 512
+.equ pt_entry_size, 8
+.equ pg_size, 4096
+
+.equ efer_msr, 0xC0000080
+.equ efer_lm, 0x100
+
 .section .text
+.code32
+.global long_mode
+.type long_mode, @function
+long_mode:
+  movl $p4t_addr, %edi
+  movl %edi, %cr3 # tell the CPU where p4t is
+
+  movl $0x0, %eax
+  movl $pt_size, %ecx
+  
+  # repeat stosl (store string doubleword) ecx times
+  # stores eax to addr edi and increments edi by 4
+  # clears all four page tables
+  rep stosl
+  
+  # reset eax to page table base
+  mov %cr3, %eax
+  
+  # p4 first entry points to p3
+  movl $((p3t_addr & pt_addr_mask) | pt_present | pt_readable), %eax
+  movl $0, %edx
+  movl %eax, p4t_addr
+  movl %edx, p4t_addr+4
+
+  # p3 first entry points to p2
+  movl $((p2t_addr & pt_addr_mask) | pt_present | pt_readable), %eax
+  movl $0, %edx
+  movl %eax, p3t_addr
+  movl %edx, p3t_addr+4
+
+  # p2 first entry points to p1
+  movl $((p1t_addr & pt_addr_mask) | pt_present | pt_readable), %eax
+  movl $0, %edx
+  movl %eax, p2t_addr
+  movl %edx, p2t_addr+4
+
+  # set up PTE
+  movl $p1t_addr, %eax
+  movl $(pt_present | pt_readable), %ebx
+  movl $pt_entries, %ecx
+
+_set_entry: # loops 512 times
+  mov %ebx, (%eax)
+  movl $0, 4(%eax)
+  add $pg_size, %ebx
+  add $pt_entry_size, %eax
+  # decrements ecx
+  loop _set_entry 
+
+  # enable PAE (Physical Address Extension)
+  mov %cr4, %eax
+  or $0x20, %eax
+  mov %eax, %cr4
+
+  # extended feature enable register has long mode bit
+  mov $efer_msr, %ecx
+  rdmsr
+  or $efer_lm, %eax
+  wrmsr
+
+  # CR0 enable paging (last step to enable compatibility mode)
+  mov %cr0, %eax
+  # paging enable bit
+  or $0x80000000, %eax
+  mov %eax, %cr0
+
+  ljmp $0x08, $_long_mode_entry
+
+.code64
+.section .data
+.global _kernel_entry
+.align 4
+_kernel_entry:
+  .quad 0
+
+.section .text
+_long_mode_entry:
+  mov _kernel_entry(%rip), %rax   # load 64-bit pointer stored at _kernel_entry
+  jmp *%rax                       # jump to kernel entry
+
+.code32
+.global check_for_longmode
+.type check_for_longmode, @function
+check_for_longmode:
+  # 1) check for CPUID extended features
+  mov $0x80000000, %eax
+  cpuid
+  cmp $0x80000001, %eax
+  jb _no_long_mode
+
+  # 2) check bit 29 of edx (long mode)
+  mov $0x80000001, %eax
+  cpuid
+  bt $29, %edx
+  jc _has_long_mode
+
+_no_long_mode:
+  movl $0x0, %eax
+  ret
+
+_has_long_mode:
+  mov $0x1, %eax
+  ret
+
+.global check_for_cpuid
+.type check_for_cpuid, @function
+check_for_cpuid:
+  # pushfl pushes 32-bit EFLAGS register to the stack
+  pushfl
+  # pop into EAX reg
+  pop %eax
+  # save eax to ecx and then try to flip bit 21
+  mov %eax, %ecx
+  xor $0x200000, %eax
+  # push to stack
+  pushl %eax
+  # pop to EFLAGS
+  popfl
+  # read back
+  pushfl
+  pop %eax
+  xor %ecx, %eax
+  and $0x200000, %eax
+  jz _no_cpuid
+
+  mov $1, %eax
+  ret
+
+_no_cpuid:
+  mov $0, %eax
+  ret
+
 .global load_sector_asm
 .type load_sector_asm, @function
-
 _save_cr0: 
   .long 0
 _save_sp:
@@ -102,7 +249,7 @@ load_sector_asm:
 
   lgdt gdt_desc 
   
-  # 3rd segment in GDT, Pmode-16 address (defined in linker.ld)
+  # 16 bit mode (index 3) Pmode-16 address (defined in linker.ld)
   ljmp $0x18, $_pmode16_load_sector
 
 .code16
@@ -168,11 +315,11 @@ _rmode_load_sector:
   # similarly jank shit
   .byte 0xEA
   .word _clear_pipe2
-  .word 0x0008
+  .word 0x0010
 
 .code32
 _clear_pipe2:
-  mov $0x10, %ax       # Load data segment selector
+  mov $0x20, %ax       # Load data segment selector
   mov %ax, %ds         # Load data segment
   mov %ax, %es         # Load extra segment
   mov %ax, %fs         # Load FS segment
@@ -213,6 +360,7 @@ _print16:
 _prt16:
   ret
 
+
 .section .data
 fb0: .ascii "Fail boot1\n\r\0"
 sb0: .ascii "Success boot1\n\r\0"
@@ -233,7 +381,24 @@ dap:
 gdt:
 gdt_null:
   .quad 0 // quad = quad word (64-bit)
-gdt_code:
+gdt_code64:
+  .word 0xFFFF // ignored by 64-bit mode
+  .word 0 // ignored by 64-bit mode
+  .byte 0 // ignored by 64-bit mode
+  .byte 0b10011000 // bit 8: unused
+                  // bit 9: unused
+                  // bit 10: conforming (can less privileged segments call this segment?) (0)
+                  // bit 11: unused
+                  // bit 12: unused
+                  // bit 14-13: privilege level (00 most privileged)
+                  // bit 15: present? (1)
+  .byte 0b00100000 // bit 19-16: unused
+                   // bit 20: unused
+                   // bit 21: long mode flag (1)
+                   // bit 22: 16-bit (0) or 32-bit (1) segment? (should be 0 if long mode selected)
+                   // bit 23: unused
+  .byte 0          // bits 31-24: unused
+gdt_code32:
   .word 0xFFFF // hex FFFF; 4GB limit for this code segment
   .word 0 // base address is 0
   .byte 0 // bits 16-23 for base address
@@ -245,18 +410,11 @@ gdt_code:
             // bit 14-13: privilege level (00 most privileged)
             // bit 15: present? (1)
   .byte 0b11001111  // bit 19-16: top four bits of segment limit
-            // bit 20: available for use by us (do whatever)
-            // bit 21: reserved by intel
+            // bit 20: reserved
+            // bit 21: long mode (0)
             // bit 22: 16-bit (0) or 32-bit (1) segment?
             // bit 23: 4kB multiplier if set
   .byte 0           // bits 31-24: top four bits of base address
-gdt_data:
-  .word 0xFFFF
-  .word 0
-  .byte 0
-  .byte 0b10010010
-  .byte 0b11001111
-  .byte 0
 gdt_code16:
   .word 0xFFFF // hex FFFF; 4GB limit for this code segment
   .word 0 // base address is 0
@@ -269,11 +427,18 @@ gdt_code16:
             // bit 14-13: privilege level (00 most privileged)
             // bit 15: present? (1)
   .byte 0b00001111  // bit 19-16: top four bits of segment limit
-            // bit 20: available for use by us (do whatever)
-            // bit 21: reserved by intel
+            // bit 20: reserved
+            // bit 21: long mode (0)
             // bit 22: 16-bit (0) or 32-bit (1) segment?
             // bit 23: 4kB multiplier if set
   .byte 0           // bits 31-24: top four bits of base address
+gdt_data:
+  .word 0xFFFF
+  .word 0
+  .byte 0
+  .byte 0b10010010
+  .byte 0b11001111
+  .byte 0
 gdt_end:
 gdt_desc:
   .word gdt_end - gdt - 1// size of gdt (0-15)

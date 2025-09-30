@@ -17,43 +17,37 @@
 #endif
 #define DISK_BUFFER_ADDR ((uint8_t*)0x8000)
 
+int check_for_cpuid(void);
+int check_for_longmode(void);
+void long_mode(void);
+
+extern Elf64_Addr _kernel_entry;
+
 // Num_sectors must be <= 24 and sector must be >= 12
 void load_sector_asm(uint16_t sector, uint16_t num_sectors);
 void load_sector(uint16_t sector, uint16_t num_sectors, uint8_t* address){
   load_sector_asm(sector, num_sectors); // loads num sectors starting at sector into 0x8000
   // Memcopy
   memcpy(address, ((const void*)DISK_BUFFER_ADDR), ((size_t)num_sectors << 9));
-  
+
+#ifdef DEBUG
   // Print out first 16 bytes
-  for(uint8_t *i=(uint8_t*)DISK_BUFFER_ADDR; i<((uint8_t*)DISK_BUFFER_ADDR + 16); i++){
-    term_putbyte(*(i) & 0xFF);
-    term_putc('\n');
-  }
+  //for(uint8_t *i=(uint8_t*)DISK_BUFFER_ADDR; i<((uint8_t*)DISK_BUFFER_ADDR + 16); i++){
+  //  term_putbyte(*(i) & 0xFF);
+  //  term_putc('\n');
+  //}
+#endif
 }
 
-/*
-uint8_t* search_for_header(uint8_t* start){
-  for(uint16_t i=0; i<0x8000; i+=4){
-    if(*(uint32_t*)(start + i) == MULTIBOOT2_HEADER_MAGIC){
-      term_print("Multiboot2 header spotted ");
-      term_print("\n at ");
-      term_print("0x");
-      term_putbyte((((uint32_t)start+i) >> 8) & 0xFF);
-      term_putbyte(((uint32_t)start+i) & 0xFF);
-      term_putc('\n');
-      return (start + i);
-    }
-  }
-  return (uint8_t*)((uint32_t)-1);
-}*/
 static Elf64_Ehdr local_ehdr;
 
-int main(){
-  //load_sector(KERNEL_START_SECTOR, KERNEL_NUM_SECTORS, KERNEL_START_ADDR);
-  //term_print("Load sector finished!\n");
-  //uint8_t* header_loc = search_for_header(KERNEL_START_ADDR);
-  //
+typedef struct {
+  size_t bytes;
+  uint8_t *addr;
+  size_t offset;
+} load_info_t;
 
+int main(){
   // Load a sector into disk buffer
   load_sector_asm(KERNEL_START_SECTOR, 1);
 
@@ -70,23 +64,56 @@ int main(){
   term_print("Elf header obtained!\n");
 
   // Load program header
-  for(uint16_t i=local_ehdr.e_phoff; i<local_ehdr.e_phoff + local_ehdr.e_phnum * local_ehdr.e_phentsize; i+=local_ehdr.e_phentsize){
-    load_sector_asm(KERNEL_START_SECTOR + (i>>9), (local_ehdr.e_phentsize>>9)+2);
-    Elf64_Phdr *phdr = (Elf64_Phdr *)(DISK_BUFFER_ADDR + ((local_ehdr.e_phoff + i*local_ehdr.e_phentsize)%0x200));
+  load_info_t linfo[5];
+  uint16_t j=0;
+  for(uint16_t i=0; i<local_ehdr.e_phnum; i++){
+    load_sector_asm(KERNEL_START_SECTOR + ((i * local_ehdr.e_phentsize) >> 9), (local_ehdr.e_phentsize>>9)+2);
 
-    term_print("Load\n 0x");
-    term_putbyte(phdr->p_filesz >> 8);
-    term_putbyte(phdr->p_filesz);
-    term_print(" bytes to \n 0x");
-    term_putbyte(phdr->p_vaddr >> 24);
-    term_putbyte(phdr->p_vaddr >> 16);
-    term_putbyte(phdr->p_vaddr >> 8);
-    term_putbyte(phdr->p_vaddr);
-    term_print(" from \n 0x");
-    term_putbyte(phdr->p_offset >> 8);
-    term_putbyte(phdr->p_offset);
-    term_print("\n\n");
+    Elf64_Phdr *phdr = (Elf64_Phdr *)(DISK_BUFFER_ADDR + ((local_ehdr.e_phoff + i * local_ehdr.e_phentsize)%512));
+
+    if(phdr->p_type == PT_LOAD){
+      linfo[j].bytes = phdr->p_filesz;
+      linfo[j].addr = (uint8_t *)phdr->p_paddr;
+      linfo[j].offset = phdr->p_offset;
+
+#ifdef DEBUG
+      term_print("Load\n 0x");
+      term_putbyte(phdr->p_filesz >> 8);
+      term_putbyte(phdr->p_filesz);
+      term_print(" bytes to \n 0x");
+      term_putbyte(phdr->p_paddr>> 24);
+      term_putbyte(phdr->p_paddr >> 16);
+      term_putbyte(phdr->p_paddr >> 8);
+      term_putbyte(phdr->p_paddr);
+      term_print(" from \n 0x");
+      term_putbyte(phdr->p_offset>>8);
+      term_putbyte(phdr->p_offset);
+      term_print("\n\n");
+#endif
+      j++;
+    }
   }
+
+  // Load proper sections
+  for(uint16_t i=0; i<j; i++){
+    load_sector(KERNEL_START_SECTOR + (linfo[i].offset>>9), ((linfo[i].bytes>>9) + 1), linfo[i].addr);
+  }
+
+  // Check for CPUID
+  if(check_for_cpuid() != 1){
+    term_print("No CPUID!\n");
+  }
+
+  // Check for CPUID extensions and check for long mode
+  if(check_for_longmode() != 1){
+    term_print("No long mode!\n");
+    while(1) {}
+  }
+
+  term_print("Entering kernel...\n");
+  _kernel_entry = local_ehdr.e_entry;
+
+  long_mode();
 
   while(1){}
 }

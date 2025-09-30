@@ -78,30 +78,6 @@ gdt_desc:
 _start:
   cli // disable interrupts
   
-  // set up gdt
-  xorw %ax, %ax // clear ax
-  movw %ds, %ax // set ds to 0 (base address)
-  lgdt [gdt_desc]
-  
-  // enter protected mode
-  movl %eax, %cr0 // eax = cr0
-  orb %al, 1 // eax[0] = 1
-  movl %cr0, %eax // cr0 = eax
-  
-  // clear pipeline by jumping and reload segment registers
-  ljmp $0x01, $clear_pipe
-
-clear_pipe:
-  movw %ax, 0x01
-  movw %ds, %ax
-  movw %es, %ax
-  movw %fs, %ax
-  movw %gs, %ax
-  movw %ss, %ax
-
-  // Setup stack space
-  mov $stack_top, %esp
-  
   // Call main
   call kernel_main
   
