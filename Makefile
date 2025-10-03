@@ -25,6 +25,7 @@ ASM_OBJS:=$(addprefix $(KERNEL_BUILD_DIR)/, $(notdir $(ASM_SRCS:.S=.o)))
 OBJS:=$(C_OBJS) $(ASM_OBJS)
 CINC=-Ikernel/
 CFLAGS=-std=gnu99 -ffreestanding -mcmodel=large -mno-red-zone -mno-mmx -mno-sse -mno-sse2 -g -Wall -Wextra -nostdlib
+CDEFS=-D__x86_64__
 
 # Loader
 LOADER_BUILD_DIR=$(BUILD_DIR)/loader
@@ -48,9 +49,10 @@ else
 endif
 
 ifeq ($(DEBUG),1)
-CFLAGS       += -DDEBUG
+CDEFS        += -DDEBUG
 BOOT1_CFLAGS += -DDEBUG
 endif
+
 default: all
 
 all: disk 
@@ -67,13 +69,13 @@ $(BUILD_DIR)/disk.img: kernel loader
 kernel: $(KERNEL_BUILD_DIR)/kernel.elf
 
 $(KERNEL_BUILD_DIR)/%.o: kernel/%.c $(GCC_STAMP) | $(KERNEL_BUILD_DIR) 
-	$(CC) $(CFLAGS) $(CINC) -c $< -o $@
+	$(CC) $(CFLAGS) $(CDEFS) $(CINC) -c $< -o $@
 
 $(KERNEL_BUILD_DIR)/%.o: kernel/%.S $(GCC_STAMP) | $(KERNEL_BUILD_DIR)
-	$(CC) $(CFLAGS) $(CINC) -c $< -o $@
+	$(CC) $(CFLAGS) $(CDEFS) $(CINC) -c $< -o $@
 
 $(KERNEL_BUILD_DIR)/kernel.elf: $(OBJS) $(GCC_STAMP) | $(KERNEL_BUILD_DIR)
-	$(CC) $(CFLAGS) $(CINC) -T kernel/linker.ld $(OBJS) -o $@ -lgcc
+	$(CC) $(CFLAGS) $(CDEFS) $(CINC) -T kernel/linker.ld $(OBJS) -o $@ -lgcc
 
 # Bootloader
 loader: $(LOADER_BUILD_DIR)/boot0.bin $(LOADER_BUILD_DIR)/boot1.bin | $(LOADER_BUILD_DIR)

@@ -70,6 +70,7 @@ _clear_pipe:
 .equ p3t_addr, 0x11000
 .equ p2t_addr, 0x12000
 .equ p1t_addr, 0x13000
+
 .equ pt_addr_mask, 0xffffffffff000
 .equ pt_present, 0x1
 .equ pt_readable, 0x2
@@ -111,7 +112,7 @@ long_mode:
   movl $((p2t_addr & pt_addr_mask) | pt_present | pt_readable), %eax
   movl $0, %edx
   movl %eax, p3t_addr
-  movl %edx, p3t_addr+4
+movl %edx, p3t_addr+4
 
   # p2 first entry points to p1
   movl $((p1t_addr & pt_addr_mask) | pt_present | pt_readable), %eax
@@ -283,7 +284,7 @@ _rmode_load_sector:
   mov %ax, %ss
   mov $0x7C00, %sp
 
-  lidt ridtd
+  lidt idt_desc
 
   sti
 
@@ -444,8 +445,8 @@ gdt_desc:
   .word gdt_end - gdt - 1// size of gdt (0-15)
   .long gdt       // gdt address (16-47)
 
-.align 16
-
-ridtd:
+// think this is a dummy idt? but not sure
+.align 8
+idt_desc:
   .word 0x3FF
   .long 0x0

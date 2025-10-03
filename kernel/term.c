@@ -120,5 +120,3 @@ void term_putbyte(uint8_t b){
 void term_print(const char* str){
   for(size_t i=0; str[i]!='\0' && i < MAX_STR_SIZE; i++) term_putc(str[i]);
 }
-/*
-*/

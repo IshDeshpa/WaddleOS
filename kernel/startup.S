@@ -41,22 +41,22 @@ gdt:
 gdt_null:
   .quad 0 // quad = quad word (64-bit)
 gdt_code:
-  .word 0xFFFF // hex FFFF; 4GB limit for this code segment
-  .word 0 // base address is 0
-  .byte 0 // bits 16-23 for base address
-  .byte 0b10011010  // bit 8: access flag (0)
-		// bit 9: readable? (1)
-		// bit 10: conforming (can less privileged segments call this segment?) (0)
-		// bit 11: execute? (1)
-		// bit 12: system (0) or code/data (1)? (1)
-		// bit 14-13: privilege level (00 most privileged)
-		// bit 15: present? (1)
-  .byte 0b11001111  // bit 19-16: top four bits of segment limit
-		// bit 20: available for use by us (do whatever)
-		// bit 21: reserved by intel
-		// bit 22: 16-bit (0) or 32-bit (1) segment?
-		// bit 23: 4kB multiplier if set
-  .byte 0		// bits 31-24: top four bits of base address
+  .word 0xFFFF // ignored by 64-bit mode
+  .word 0 // ignored by 64-bit mode
+  .byte 0 // ignored by 64-bit mode
+  .byte 0b10011000 // bit 8: unused
+                  // bit 9: unused
+                  // bit 10: conforming (can less privileged segments call this segment?) (0)
+                  // bit 11: unused
+                  // bit 12: unused
+                  // bit 14-13: privilege level (00 most privileged)
+                  // bit 15: present? (1)
+  .byte 0b00100000 // bit 19-16: unused
+                   // bit 20: unused
+                   // bit 21: long mode flag (1)
+                   // bit 22: 16-bit (0) or 32-bit (1) segment? (should be 0 if long mode selected)
+                   // bit 23: unused
+  .byte 0          // bits 31-24: unused
 gdt_data:
   .word 0xFFFF
   .word 0
@@ -65,25 +65,40 @@ gdt_data:
   .byte 0b11001111
   .byte 0
 gdt_end:
-
 gdt_desc:
-  .word gdt_end - gdt // size of gdt (0-15)
-  .long gdt	      // gdt address (16-47)
+  .word gdt_end - gdt - 1 // size of gdt (0-15)
+  .quad gdt	      // gdt address (16-47)
 
 .section .text
 .global _start
 .type _start, @function
 
-.code32
+.code64
 _start:
   cli // disable interrupts
-  
+
+  // Load GDT
+  lgdt [gdt_desc]
+
+  mov $0x10, %ax
+  mov %ds, %ax
+  mov %es, %ax
+  mov %fs, %ax
+  mov %gs, %ax
+  mov %ss, %ax
+
+  pushq $0x08 
+  lea next(%rip), %rax
+  pushq %rax 
+  lretq
+next:
   // Call main
   call kernel_main
   
   // Infinite loop
-    cli
-lp: hlt
-    jmp lp
+  cli
+lp: 
+  hlt
+  jmp lp
 
 .size _start, . - _start
