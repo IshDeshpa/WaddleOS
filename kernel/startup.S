@@ -87,6 +87,8 @@ _start:
   mov %gs, %ax
   mov %ss, %ax
 
+  // Nifty trick; GAS for some reason doesn't like me ljmping to next, so using this form of memory-based ljmp
+  // where I push the segment and the address of next to the stack and then "long returning"
   pushq $0x08 
   lea next(%rip), %rax
   pushq %rax 
