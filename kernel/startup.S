@@ -91,6 +91,7 @@ _start:
   lea next(%rip), %rax
   pushq %rax 
   lretq
+
 next:
   // Call main
   call kernel_main
