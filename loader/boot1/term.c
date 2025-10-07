@@ -1,6 +1,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include "term.h"
+#include "io.h"
 
 // VGA buffer location in x86
 // Entries in the VGA buffer take the binary form BBBBFFFFCCCCCCCC, where:
@@ -54,22 +55,24 @@ void term_clear(){
 uint8_t term_col = 0;
 uint8_t term_row = 0;
 
-static inline uint8_t inb(uint16_t port) {
-    uint8_t ret;
-    __asm__ volatile ( "inb %1, %0" : "=a"(ret) : "Nd"(port) );
-    return ret;
-}
+// static inline uint8_t inb(uint16_t port) {
+//     uint8_t ret;
+//     __asm__ volatile ( "inb %1, %0" : "=a"(ret) : "Nd"(port) );
+//     return ret;
+// }
 
 // Read cursor position into term_col and term_row
 void term_readcursor(){
   uint16_t pos = 0;
 
     // Read high byte
-    __asm__ volatile ("outb %0, %1" : : "a"((uint8_t)0x0E), "Nd"((uint16_t)0x3D4));
+    //__asm__ volatile ("outb %0, %1" : : "a"((uint8_t)0x0E), "Nd"((uint16_t)0x3D4));
+    outb(0x0E, 0x3D4);
     pos = inb(0x3D5) << 8;
 
     // Read low byte
-    __asm__ volatile ("outb %0, %1" : : "a"((uint8_t)0x0F), "Nd"((uint16_t)0x3D4));
+    //__asm__ volatile ("outb %0, %1" : : "a"((uint8_t)0x0F), "Nd"((uint16_t)0x3D4));
+    outb(0x0F, 0x3D4);
     pos |= inb(0x3D5);
 
     term_row = pos / VGA_COLS;
@@ -97,7 +100,7 @@ void term_putc(char c){
     // Shift all rows up one
     for(uint8_t col=0; col<VGA_COLS; col++){
       for(uint8_t row=1; row<VGA_ROWS; row++){
-	_vga_write(row-1, col, _vga_read(row, col));
+        _vga_write(row-1, col, _vga_read(row, col));
       }
     }
     // Clear current row
