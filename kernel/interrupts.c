@@ -4,7 +4,7 @@
 #include "idt.h"
 #include "pic.h"
 #include "utils.h"
-#include "printf.h"
+#include "term.h"
 
 static void *exc_stubs[32] = {
   &exc_0, &exc_1, &exc_2, &exc_3,
@@ -45,7 +45,7 @@ void interrupts_init(){
   flags = INT_FLAGS_PRESENT | INT_FLAGS_DPL_KERNEL | INT_FLAGS_GATE_INTR;
   pic_init(0x20);
   for(uint8_t irq_num=32; irq_num<48; irq_num++){
-    idt_set_descriptor(irq_num, isr_stubs[irq_num], flags);
+    idt_set_descriptor(irq_num, isr_stubs[irq_num - 32], flags);
   }
 
   // Initialize IDT
@@ -60,14 +60,14 @@ void interrupts_register_handler(uint8_t vector, void (*handler)(interrupt_frame
   }
 }
 
-static bool i_active = false;
+static bool i_active = true;
 void interrupts_enable(){
-  __asm__ volatile("cli" ::: "memory");
+  __asm__ volatile("sti" ::: "memory");
   i_active = true;
 }
 
 void interrupts_disable(){
-  __asm__ volatile("sti" ::: "memory");
+  __asm__ volatile("cli" ::: "memory");
   i_active = false;
 }
 

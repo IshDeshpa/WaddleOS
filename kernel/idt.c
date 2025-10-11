@@ -1,5 +1,4 @@
 #include "idt.h"
-#include "printf.h"
 #include <stdint.h>
 
 #define IDT_MAX_DESCRIPTORS (256)

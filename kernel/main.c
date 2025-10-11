@@ -1,7 +1,6 @@
 #include "term.h"
 #include "interrupts.h"
 #include "pit.h"
-#include "printf.h"
 
 #ifdef __linux__
   #error "ERROR: Must be compiled via cross-compiler"
@@ -16,15 +15,12 @@ void kernel_main(){
   
   interrupts_init();
 
-  pit_init();
+  pit_init(100); // 100 hz
 
   interrupts_enable(); // -------
 
-  char strbuf[2];
-  strbuf[1] = '\0';
   for(int i=0; i<100; i++){
     term_printf("Hello World! %s %d %x\n\r", "abc", i, i);
-
 
     for(int j=0; j<50000000; j++); // delay
   }

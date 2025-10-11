@@ -29,11 +29,10 @@ multiboot_tag_framebuffer:
 multiboot_hdr_end:
   .align MULTIBOOT_TAG_ALIGN
 
-.section .bss
-.align 16
-stack_bottom:
-.skip 16384
-stack_top:
+.extern _bss_start
+.extern _bss_end
+.extern _stack_top
+.extern _stack_bottom
 
 .section .data
 .align 4
@@ -77,6 +76,10 @@ gdt_desc:
 _start:
   cli // disable interrupts
 
+  // Stack pointer
+  lea _stack_top(%rip), %rsp
+  xor %rbp, %rbp // clear base pointer
+
   // Load GDT
   lgdt [gdt_desc]
 
@@ -86,6 +89,13 @@ _start:
   mov %fs, %ax
   mov %gs, %ax
   mov %ss, %ax
+
+  // Initialize bss
+  lea _bss_start(%rip), %rdi
+  lea _bss_end(%rip), %rcx
+  sub %rdi, %rcx
+  xor %rax, %rax
+  rep stosb
 
   // Nifty trick; GAS for some reason doesn't like me ljmping to next, so using this form of memory-based ljmp
   // where I push the segment and the address of next to the stack and then "long returning"

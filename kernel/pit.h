@@ -1,6 +1,8 @@
 #ifndef PIT_H
 #define PIT_H
 
-void pit_init();
+#include <stdint.h>
+
+void pit_init(uint16_t timer_freq_hz);
 
 #endif

@@ -137,7 +137,7 @@ debug:
 	qemu-system-$(QEMU_VER) $(QEMU_FLAGS) -drive format=raw,file=build/disk.img -S -s
 
 gdb:
-	$(CROSS_BUILD_DIR)/bin/x86_64-elf-gdb $(LOADER_BUILD_DIR)/boot1.elf
+	$(CROSS_BUILD_DIR)/bin/x86_64-elf-gdb $(KERNEL_BUILD_DIR)/kernel.elf
 
 mon:
 	qemu-system-$(QEMU_VER) $(QEMU_FLAGS) -drive format=raw,file=build/disk.img -monitor stdio
