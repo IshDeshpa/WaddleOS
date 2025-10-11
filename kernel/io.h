@@ -10,6 +10,10 @@
                       : "Nd"((uint16_t)(port))); \
     _ret; \
 })
+
 #define outb(val, port) __asm__ volatile ("outb %0, %1" : : "a"((uint8_t)val), "Nd"((uint16_t)port))
+
+// Tiny wait (1-4 microseconds)
+#define io_wait() outb(0x80, 0)
 
 #endif

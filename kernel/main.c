@@ -1,5 +1,6 @@
-#include "idt.h"
 #include "term.h"
+#include "interrupts.h"
+#include "pit.h"
 #include "printf.h"
 
 #ifdef __linux__
@@ -9,15 +10,20 @@
 #endif
 
 void kernel_main(){
+  interrupts_disable(); // -------
+
   term_clear();
   
-  idt_init();
-  enable_interrupts();
+  interrupts_init();
+
+  pit_init();
+
+  interrupts_enable(); // -------
 
   char strbuf[2];
   strbuf[1] = '\0';
   for(int i=0; i<100; i++){
-    printf("Hello World! %s %d %x\n\r", "abc", i, i);
+    term_printf("Hello World! %s %d %x\n\r", "abc", i, i);
 
 
     for(int j=0; j<50000000; j++); // delay
