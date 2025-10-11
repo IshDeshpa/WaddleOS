@@ -4,9 +4,9 @@
 #include "pic.h"
 #include "io.h"
 #include "utils.h"
+#include "term.h"
 
 // Two types of "command words": initialization command word (ICW) and operation command word (OCW)
-
 #define OCW2_EOI (0x20)
 
 // LTIM ADI SNGL IC4
@@ -32,25 +32,33 @@ static uint8_t master_pic_offset;
 static uint8_t slave_pic_offset;
 
 void pic_init(uint8_t offset1){
-  master_pic_offset = offset1; 
-  slave_pic_offset = offset1 + 0x08;
+  master_pic_offset = offset1;
+  slave_pic_offset  = offset1 + 0x08;
 
-  // Remaps IRQs 0-7,8-15 to offset1 and offset2 respectively
-  outb(MASTER_PIC_CMD, ICW1_INIT | ICW1_IC4_PRESENT);
-  outb(SLAVE_PIC_CMD, ICW1_INIT | ICW1_IC4_PRESENT);
-  outb(MASTER_PIC_DATA, master_pic_offset); // master PIC vector offset (ICW2)
-  outb(SLAVE_PIC_DATA, slave_pic_offset); // slave PIC vector offset (ICW2)
-  outb(MASTER_PIC_DATA, (1 << SLAVE_PIC_CASCADE_IRQ)); // ICW3 (master)
-  outb(SLAVE_PIC_DATA, 2); // ICW3 (slave)
-  
-  // ICW4: specify 8086 mode
-  outb(MASTER_PIC_DATA, ICW4_8086);
-  outb(SLAVE_PIC_DATA, ICW4_8086);
+  // ICW1: init + expect ICW4
+  outb(MASTER_PIC_CMD, ICW1_INIT | ICW1_IC4_PRESENT); io_wait();
+  outb(SLAVE_PIC_CMD, ICW1_INIT | ICW1_IC4_PRESENT); io_wait();
 
-  pic_disable();
+  // ICW2: vector offsets
+  outb(MASTER_PIC_DATA, master_pic_offset); io_wait();
+  outb(SLAVE_PIC_DATA, slave_pic_offset); io_wait();
 
-  // unmask
-  // pic_enable();
+  // ICW3: cascade
+  outb(MASTER_PIC_DATA, 1 << SLAVE_PIC_CASCADE_IRQ); io_wait();
+  outb(SLAVE_PIC_DATA, SLAVE_PIC_CASCADE_IRQ); io_wait();
+
+  // ICW4: 8086 mode
+  outb(MASTER_PIC_DATA, ICW4_8086); io_wait();
+  outb(SLAVE_PIC_DATA, ICW4_8086); io_wait();
+
+  // OCW1
+  outb(MASTER_PIC_DATA, ~(1 << SLAVE_PIC_CASCADE_IRQ)); io_wait(); // 0xFB
+  outb(SLAVE_PIC_DATA, 0xFF); io_wait(); // mask all slave IRQs initially
+
+  uint8_t master_mask = inb(MASTER_PIC_DATA);
+  uint8_t slave_mask  = inb(SLAVE_PIC_DATA);
+  term_printf("Master mask: %x\n\r", master_mask);
+  term_printf("Slave mask: %x\n\r", slave_mask);
 }
 
 void pic_eoi(uint8_t vector){
@@ -64,13 +72,17 @@ void pic_eoi(uint8_t vector){
 }
 
 void pic_enable(){
-  outb(MASTER_PIC_CMD, 0x00);
-  outb(SLAVE_PIC_CMD, 0x00);
+  outb(MASTER_PIC_DATA, 0x00);
+  io_wait();
+  outb(SLAVE_PIC_DATA, 0x00);
+  io_wait();
 }
 
 void pic_disable(){
-  outb(MASTER_PIC_CMD, 0xFF);
-  outb(SLAVE_PIC_CMD, 0xFF);
+  outb(MASTER_PIC_DATA, 0xFF);
+  io_wait();
+  outb(SLAVE_PIC_DATA, 0xFF);
+  io_wait();
 }
 
 void pic_set_mask(uint8_t vector){
@@ -80,13 +92,17 @@ void pic_set_mask(uint8_t vector){
   uint8_t value;
   vector -= master_pic_offset;
 
-  if (vector > 8){
+  if (vector >= 8){
     port = SLAVE_PIC_DATA;
     vector -= 8;
   }
 
+  ASSERT(vector < 8);
+
   value = inb(port) | (1 << vector);
+  io_wait();
   outb(value, port);
+  io_wait();
 }
 
 void pic_clear_mask(uint8_t vector){
@@ -96,11 +112,22 @@ void pic_clear_mask(uint8_t vector){
   uint8_t value;
   vector -= master_pic_offset;
 
-  if (vector > 8){
+  if (vector >= 8){
     port = SLAVE_PIC_DATA;
     vector -= 8;
   }
 
+  ASSERT(vector < 8);
+
   value = inb(port) & (~(1 << vector));
+  io_wait();
   outb(value, port);
+  io_wait();
+}
+
+uint8_t pic_get_mask(uint8_t slave){
+  // 0 gets master, 1 gets slave
+  uint8_t res = inb((slave)?SLAVE_PIC_DATA:MASTER_PIC_DATA);
+  io_wait();
+  return res;
 }

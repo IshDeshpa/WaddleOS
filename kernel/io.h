@@ -3,17 +3,25 @@
 
 #include <stdint.h>
 
-#define inb(port) ({ \
-    uint8_t _ret; \
-    __asm__ volatile ("inb %1, %0" \
-                      : "=a"(_ret) \
-                      : "Nd"((uint16_t)(port))); \
-    _ret; \
-})
+/* Read a byte from an I/O port */
+static inline uint8_t inb(uint16_t port) {
+    uint8_t val;
+    __asm__ volatile ("inb %1, %0"
+                      : "=a"(val)
+                      : "Nd"(port));
+    return val;
+}
 
-#define outb(val, port) __asm__ volatile ("outb %0, %1" : : "a"((uint8_t)val), "Nd"((uint16_t)port))
+/* Write a byte to an I/O port */
+static inline void outb(uint16_t port, uint8_t val) {
+    __asm__ volatile ("outb %0, %1"
+                      :
+                      : "a"(val), "Nd"(port));
+}
 
-// Tiny wait (1-4 microseconds)
-#define io_wait() outb(0x80, 0)
+/* Tiny I/O wait (optional) */
+static inline void io_wait(void) {
+    __asm__ volatile("outb %%al, $0x80" : : "a"(0));
+}
 
 #endif

@@ -9,5 +9,6 @@ void pic_disable();
 void pic_enable();
 void pic_set_mask(uint8_t vector);
 void pic_clear_mask(uint8_t vector);
+uint8_t pic_get_mask(uint8_t slave);
 
 #endif

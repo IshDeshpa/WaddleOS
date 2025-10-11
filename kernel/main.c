@@ -1,5 +1,7 @@
+#include "idt.h"
 #include "term.h"
 #include "interrupts.h"
+#include "pic.h"
 #include "pit.h"
 
 #ifdef __linux__
@@ -15,8 +17,8 @@ void kernel_main(){
   
   interrupts_init();
 
-  pit_init(100); // 100 hz
-
+  //pit_init(100); // 100 hz
+  
   interrupts_enable(); // -------
 
   for(int i=0; i<100; i++){

@@ -42,8 +42,9 @@ void interrupts_init(){
   }
 
   // Initialize interrupts (external hardware)
-  flags = INT_FLAGS_PRESENT | INT_FLAGS_DPL_KERNEL | INT_FLAGS_GATE_INTR;
   pic_init(0x20);
+
+  flags = INT_FLAGS_PRESENT | INT_FLAGS_DPL_KERNEL | INT_FLAGS_GATE_INTR;
   for(uint8_t irq_num=32; irq_num<48; irq_num++){
     idt_set_descriptor(irq_num, isr_stubs[irq_num - 32], flags);
   }
