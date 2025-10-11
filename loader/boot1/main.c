@@ -23,12 +23,20 @@ void long_mode(void);
 
 extern Elf64_Addr _kernel_entry;
 
-// Num_sectors must be <= 24 and sector must be >= 12
+// Num_sectors must be <= 24 and sector must be >= 12 for load_sector_asm
 void load_sector_asm(uint16_t sector, uint16_t num_sectors);
 void load_sector(uint16_t sector, uint16_t num_sectors, uint8_t* address){
-  load_sector_asm(sector, num_sectors); // loads num sectors starting at sector into 0x8000
-  // Memcopy
-  memcpy(address, ((const void*)DISK_BUFFER_ADDR), ((size_t)num_sectors << 9));
+  while(num_sectors > 0){
+    uint16_t sectors_now = (num_sectors > 24)?24:num_sectors;
+    
+    load_sector_asm(sector, sectors_now); // loads num sectors starting at sector into 0x8000
+    // Memcopy
+    memcpy(address, ((const void*)DISK_BUFFER_ADDR), (sectors_now << 9));
+
+    sector += sectors_now;
+    address += (sectors_now << 9);
+    num_sectors -= sectors_now;
+  }
 
 #ifdef DEBUG
   // Print out first 16 bytes
