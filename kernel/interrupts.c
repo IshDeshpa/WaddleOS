@@ -78,6 +78,7 @@ bool interrupts_active(){
 
 void exception_handler(interrupt_frame_t *interrupt_frame, uint64_t vector_number) {
   term_printf("Vector Number %d\n\r", vector_number);
+  term_printf("Error code: %d\n\r", interrupt_frame->error_code);
  
   ASSERT(vector_number < 32);
   ASSERT(exc_handlers[vector_number] != 0);

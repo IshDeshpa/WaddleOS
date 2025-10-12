@@ -29,7 +29,6 @@ typedef struct {
   uint64_t rflags;
   uint64_t rsp;  // only pushed if privilege level changes
   uint64_t ss;   // only pushed if privilege level changes
-
 } interrupt_frame_t;
 
 void interrupts_init();

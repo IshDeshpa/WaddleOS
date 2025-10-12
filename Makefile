@@ -39,7 +39,7 @@ BOOT1_CINC=-Iloader/boot1/
 BOOT1_CFLAGS=-std=gnu99 -ffreestanding -m32 -mno-red-zone -mno-mmx -mno-sse -mno-sse2 -g -Wall -Wextra -nostdlib -Oz
 
 # QEMU
-QEMU_FLAGS=-cpu qemu64 -M pc
+QEMU_FLAGS=-cpu qemu64
 
 ARCH?=64
 ifeq ($(ARCH),64)

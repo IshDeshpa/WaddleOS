@@ -57,16 +57,16 @@ gdt_code:
                    // bit 23: unused
   .byte 0          // bits 31-24: unused
 gdt_data:
-  .word 0xFFFF
-  .word 0
-  .word 0
-  .byte 0b10010010
-  .byte 0b11001111
-  .byte 0
+  .word 0x0000
+  .word 0x0000
+  .byte 0x00
+  .byte 0b10010010    # Data: read/write, ring 0, present
+  .byte 0x00
+  .byte 0x00
 gdt_end:
 gdt_desc:
   .word gdt_end - gdt - 1 // size of gdt (0-15)
-  .quad gdt	      // gdt address (16-47)
+  .quad gdt      // gdt address (16-47)
 
 .section .text
 .global _start
@@ -84,11 +84,11 @@ _start:
   lgdt [gdt_desc]
 
   mov $0x10, %ax
-  mov %ds, %ax
-  mov %es, %ax
-  mov %fs, %ax
-  mov %gs, %ax
-  mov %ss, %ax
+  mov %ax, %ds
+  mov %ax, %es
+  mov %ax, %fs
+  mov %ax, %gs
+  mov %ax, %ss
 
   // Initialize bss
   lea _bss_start(%rip), %rdi

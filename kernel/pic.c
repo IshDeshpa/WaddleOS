@@ -51,14 +51,7 @@ void pic_init(uint8_t offset1){
   outb(MASTER_PIC_DATA, ICW4_8086); io_wait();
   outb(SLAVE_PIC_DATA, ICW4_8086); io_wait();
 
-  // OCW1
-  outb(MASTER_PIC_DATA, ~(1 << SLAVE_PIC_CASCADE_IRQ)); io_wait(); // 0xFB
-  outb(SLAVE_PIC_DATA, 0xFF); io_wait(); // mask all slave IRQs initially
-
-  uint8_t master_mask = inb(MASTER_PIC_DATA);
-  uint8_t slave_mask  = inb(SLAVE_PIC_DATA);
-  term_printf("Master mask: %x\n\r", master_mask);
-  term_printf("Slave mask: %x\n\r", slave_mask);
+  pic_disable();
 }
 
 void pic_eoi(uint8_t vector){
@@ -99,10 +92,8 @@ void pic_set_mask(uint8_t vector){
 
   ASSERT(vector < 8);
 
-  value = inb(port) | (1 << vector);
-  io_wait();
-  outb(value, port);
-  io_wait();
+  value = inb(port) | (1 << vector); io_wait();
+  outb(port, value); io_wait();
 }
 
 void pic_clear_mask(uint8_t vector){
@@ -119,15 +110,12 @@ void pic_clear_mask(uint8_t vector){
 
   ASSERT(vector < 8);
 
-  value = inb(port) & (~(1 << vector));
-  io_wait();
-  outb(value, port);
-  io_wait();
+  value = inb(port) & (~(1 << vector)); io_wait();
+  outb(port, value); io_wait();
 }
 
 uint8_t pic_get_mask(uint8_t slave){
   // 0 gets master, 1 gets slave
-  uint8_t res = inb((slave)?SLAVE_PIC_DATA:MASTER_PIC_DATA);
-  io_wait();
+  uint8_t res = inb((slave)?SLAVE_PIC_DATA:MASTER_PIC_DATA); io_wait();
   return res;
 }
