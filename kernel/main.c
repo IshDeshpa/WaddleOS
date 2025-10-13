@@ -1,4 +1,5 @@
 #include "idt.h"
+#include "paging.h"
 #include "term.h"
 #include "interrupts.h"
 #include "pic.h"
@@ -17,7 +18,9 @@ void kernel_main(){
   
   interrupts_init();
 
-  pit_init(100); // 100 hz
+  paging_init();
+
+  //pit_init(100); // 100 hz
   
   uint8_t pic_mask_master = pic_get_mask(0);
   term_printf("Master mask: %x\n\r", pic_mask_master);
