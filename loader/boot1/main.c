@@ -12,9 +12,6 @@
 
 #define KERNEL_START_ADDR ((uint8_t*)0x100000)
 #define KERNEL_START_SECTOR (12)
-#ifndef KERNEL_NUM_SECTORS
-  #define KERNEL_NUM_SECTORS (9)
-#endif
 #define DISK_BUFFER_ADDR ((uint8_t*)0x8000)
 
 int check_for_cpuid(void);
@@ -102,7 +99,32 @@ int main(){
     }
   }
 
-  // Load proper sections
+  // Load first section
+  load_sector(KERNEL_START_SECTOR + (linfo[0].offset>>9), ((linfo[0].bytes>>9) + 1), linfo[0].addr);
+
+  // MULTIBOOT TIME
+  struct multiboot_header *mhdr = (struct multiboot_header *)linfo[0].addr;
+  
+  // Verify magic number
+  if(mhdr->magic != MULTIBOOT2_HEADER_MAGIC){
+    while(1) {}
+  }
+
+  // Verify checksum
+  if((mhdr->magic + mhdr->architecture + mhdr->header_length + mhdr->checksum) != 0){
+    while(1) {}
+  }
+
+  // Check for tags
+  // struct multiboot_header_tag *tag = mhdr + sizeof(struct multiboot_header);
+  // while(1){
+  //   switch(tag->type){
+  //     case MULTIBOOT_TAG_TYPE_BASIC_MEMINFO:
+  //
+  //   }
+  // }
+
+  // Load remaining sections
   for(uint16_t i=0; i<j; i++){
     load_sector(KERNEL_START_SECTOR + (linfo[i].offset>>9), ((linfo[i].bytes>>9) + 1), linfo[i].addr);
   }

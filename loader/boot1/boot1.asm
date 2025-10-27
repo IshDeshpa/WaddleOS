@@ -1,5 +1,10 @@
+.global term_print
+.global term_readcursor
+
 .section .text._start
 .global _start
+.type _start, @function
+
 .code16
 _start:
   cli
@@ -30,6 +35,9 @@ _lp_inp2:
   outb %al, $0x60
 
   # A20 now enabled!
+  mov $a2, %si
+  call _print16
+
   cli
   lgdt gdt_desc
   mov %cr0, %eax
@@ -47,191 +55,16 @@ _clear_pipe:
   mov %ax, %fs         # Load FS segment
   mov %ax, %gs         # Load GS segment
   mov %ax, %ss         # Load stack segment
+  mov $0x9FC00, %esp   # Set stack pointer
+
+  call term_readcursor
+
+  mov $pm, %eax
+  push %eax
+  call term_print
+  add $4, %esp
 
   jmp main
-
-.global load_sector_asm
-.type load_sector_asm, @function
-.code32
-load_sector_asm:
-  pushl %ebp
-  movl %esp, %ebp
-
-  pushal                  # saves eax, ecx, edx, ebx, esp, ebp, esi, edi
-  pushfl                  # save flags
-
-  # get arguments
-  mov 8(%ebp), %ax # sector number
-  mov 12(%ebp), %bx # number of sectors
-
-  # Make sure sector number >= 12
-  cmp $12, %ax
-  jnge _ret
-
-  # Make sure number of sectors <= 24
-  cmp $24, %bx
-  jnle _ret
-
-  # 1) change dap
-  lea dap, %edx
-  movw %bx, 2(%edx) # move number of sectors to dap
-  movw %ax, 8(%edx) # move sector number to dap
- 
-  pushw $_rmode_load_sector # push function pointer as subroutine to run in real mode
-  call run_rmode_subrt
- 
-  # pop arguments so that stack restores properly
-  popw %ax
-
-_ret:
-  popfl
-  popal
-  leave
-  ret
-
-.global _rmode_load_sector
-.type _rmode_load_sector, @function
-.code16
-_rmode_load_sector:
-  push %bp
-  mov %sp, %bp
-
-  # 3) load to disk buffer   
-  # Setup INT 13h extension
-  movw $0x4100, %ax # read sectors
-  movw $0x55AA, %bx # offset
-  movb $0x80, %dl # drive 0x80 (HDD)
-  int $0x13
- 
-  # Error checking lol
-  jc .
-
-  lea dap, %si	 # disk address packet in DS:SI
-  movb $0x42, %ah # read disk
-  movb $0x80, %dl # drive 0x80 (HDD)
-  int $0x13
-
-  # Error checking lol
-  jc .
-
-  leave
-  ret
-
-.global run_rmode_subrt
-.type run_rmode_subrt, @function
-.code32
-run_rmode_subrt:
-  pushl %ebp
-  movl %esp, %ebp
-
-  pushal
-  pushfl
-
-  mov $0x18, %ax
-  mov %ax, %ds
-  mov %ax, %es
-
-  # Real mode address, defined in linker.ld
-  ljmp $0x18, $_pmode16_entry
-
-.code16
-_pmode16_entry:
-  # disable paging just in case it's enabled. also disables 16-bit protected mode 
-  mov %cr0, %eax
-  and $0x7FFFFFFE, %eax
-  mov %eax, %cr0
-
-  ljmp $0x0000, $_real_mode_entry
-
-.code16
-_real_mode_entry: 
-  cli
-  xor %ax, %ax
-  mov %ax, %ds
-  mov %ax, %es
-  mov %ax, %gs
-  mov %ax, %fs
-  mov %ax, %ss
-
-  mov $idt_desc, %si
-  lidt (%si)
-  sti
-
-  movw 8(%bp), %bx
-  call %bx
-
-  mov   %cr0, %eax
-  or    $1, %eax          # set PE bit again
-  mov   %eax, %cr0
-  ljmp  $0x10, $pmode_return  # jump back to 32-bit protected mode
-
-.code32
-pmode_return:
-  mov $0x20, %ax       # Load data segment selector
-  mov %ax, %ds         # Load data segment
-  mov %ax, %es         # Load extra segment
-  mov %ax, %fs         # Load FS segment
-  mov %ax, %gs         # Load GS segment
-  mov %ax, %ss         # Load stack segment
-
-  popfl
-  popal
-
-  leave
-  ret
-
-.code32
-.global check_for_cpuid
-.type check_for_cpuid, @function
-check_for_cpuid:
-  # pushfl pushes 32-bit EFLAGS register to the stack
-  pushfl
-  # pop into EAX reg
-  pop %eax
-  # save eax to ecx and then try to flip bit 21
-  mov %eax, %ecx
-  xor $0x200000, %eax
-  # push to stack
-  pushl %eax
-  # pop to EFLAGS
-  popfl
-  # read back
-  pushfl
-  pop %eax
-  xor %ecx, %eax
-  and $0x200000, %eax
-  jz _no_cpuid
-
-  mov $1, %eax
-  ret
-
-_no_cpuid:
-  mov $0, %eax
-  ret
-
-.code32
-.global check_for_longmode
-.type check_for_longmode, @function
-check_for_longmode:
-  # 1) check for CPUID extended features
-  mov $0x80000000, %eax
-  cpuid
-  cmp $0x80000001, %eax
-  jb _no_long_mode
-
-  # 2) check bit 29 of edx (long mode)
-  mov $0x80000001, %eax
-  cpuid
-  bt $29, %edx
-  jc _has_long_mode
-
-_no_long_mode:
-  movl $0x0, %eax
-  ret
-
-_has_long_mode:
-  mov $0x1, %eax
-  ret
 
 .equ p4t_addr, 0x10000
 .equ p3t_addr, 0x11000
@@ -250,6 +83,7 @@ _has_long_mode:
 .equ efer_msr, 0xC0000080
 .equ efer_lm, 0x100
 
+.section .text
 .code32
 .global long_mode
 .type long_mode, @function
@@ -330,7 +164,201 @@ _long_mode_entry:
   mov _kernel_entry(%rip), %rax   # load 64-bit pointer stored at _kernel_entry
   jmp *%rax                       # jump to kernel entry
 
+.code32
+.global check_for_longmode
+.type check_for_longmode, @function
+check_for_longmode:
+  # 1) check for CPUID extended features
+  mov $0x80000000, %eax
+  cpuid
+  cmp $0x80000001, %eax
+  jb _no_long_mode
+
+  # 2) check bit 29 of edx (long mode)
+  mov $0x80000001, %eax
+  cpuid
+  bt $29, %edx
+  jc _has_long_mode
+
+_no_long_mode:
+  movl $0x0, %eax
+  ret
+
+_has_long_mode:
+  mov $0x1, %eax
+  ret
+
+.global check_for_cpuid
+.type check_for_cpuid, @function
+check_for_cpuid:
+  # pushfl pushes 32-bit EFLAGS register to the stack
+  pushfl
+  # pop into EAX reg
+  pop %eax
+  # save eax to ecx and then try to flip bit 21
+  mov %eax, %ecx
+  xor $0x200000, %eax
+  # push to stack
+  pushl %eax
+  # pop to EFLAGS
+  popfl
+  # read back
+  pushfl
+  pop %eax
+  xor %ecx, %eax
+  and $0x200000, %eax
+  jz _no_cpuid
+
+  mov $1, %eax
+  ret
+
+_no_cpuid:
+  mov $0, %eax
+  ret
+
+.global load_sector_asm
+.type load_sector_asm, @function
+
+load_sector_asm:
+  # Starts in 32-bit pmode
+  movzwl 4(%esp), %eax # sector number
+  movzwl 8(%esp), %ecx # number of sectors (< 24)
+  
+  # Make sure sector number >= 12
+  cmp $12, %eax
+  jnge _ret
+
+  # Make sure number of sectors <= 24
+  cmp $24, %ecx
+  jnle _ret
+  
+  # 1) change dap
+  lea dap, %edx
+  movw %cx, 2(%edx) # move number of sectors to dap
+  movw %ax, 8(%edx) # move sector number to dap
+
+  # 2) jump to 16-bit protected mode
+  cli 
+  lgdt gdt_desc 
+  
+  # 16 bit mode (index 3) Pmode-16 address (defined in linker.ld)
+  ljmp $0x18, $_pmode16_load_sector
+
+.code16
+.section .pmode16, "ax"
+.global _pmode16_load_sector
+_pmode16_load_sector:
+  # 16-bit pmode
+  cli
+  mov $0x18, %ax
+  mov %ax, %ds
+  mov %ax, %es
+
+  # disable paging just in case it's enabled. also disables 16-bit protected mode 
+  mov %cr0, %eax
+  mov %eax, [_save_cr0]
+  and $0x7FFFFFFE, %eax
+  mov %eax, %cr0
+
+  # Real mode address, defined in linker.ld
+  ljmp $0x0000, $_rmode_load_sector
+
+.section .rmode, "ax"
+.global _rmode_load_sector
+_rmode_load_sector:
+  # 16-bit rmode
+  # reload segment registers
+  cli
+  xor %ax, %ax
+  mov %ax, %ds
+  mov %ax, %es
+  mov %ax, %ss
+  mov $0x7C00, %sp
+
+  lidt idt_desc
+
+  sti
+
+  # 3) load to disk buffer   
+  # Setup INT 13h extension
+  mov $0x4100, %ax # read sectors
+  mov $0x55AA, %bx # offset
+  mov $0x80, %dl # drive 0x80 (HDD)
+  int $0x13
+ 
+  # Error checking lol
+  jc .
+
+  lea dap, %si	 # disk address packet in DS:SI
+  mov $0x42, %ah # read disk
+  mov $0x80, %dl # drive 0x80 (HDD)
+  int $0x13
+
+  # Error checking lol
+  jc .
+
+  # 4) jump to protected mode
+  cli
+  lgdt gdt_desc
+  mov %cr0, %eax
+  or $1, %eax
+  mov %eax, %cr0
+  
+  # similarly jank shit
+  .byte 0xEA
+  .word _clear_pipe2
+  .word 0x0010
+
+.code32
+_clear_pipe2:
+  mov $0x20, %ax       # Load data segment selector
+  mov %ax, %ds         # Load data segment
+  mov %ax, %es         # Load extra segment
+  mov %ax, %fs         # Load FS segment
+  mov %ax, %gs         # Load GS segment
+  mov %ax, %ss         # Load stack segment
+  mov _save_sp, %esp   # Set stack pointer
+  mov _save_cr0, %eax
+  and $~0x80000000, %eax # no paging boooooo
+  mov %eax, %cr0
+
+  # 5) load to appropriate address (done in C routine)
+  popa
+
+_ret:
+  ret
+
+.code16
+.global _pchr16
+.type _pchr16, @function
+_pchr16:
+  mov $0x0E, %ah
+  mov $0x00, %bh
+  int $0x10
+  ret
+
+.global _print16
+.type _print16, @function
+_print16:
+  # Expects correct pointer in si
+  # load ds:si into al and increment si
+  lodsb 
+  call _pchr16
+
+  or %al, %al
+  jz _prt16
+  jmp _print16
+  
+_prt16:
+  ret
+
+
 .section .data
+fb0: .ascii "Fail boot1\n\r\0"
+sb0: .ascii "Success boot1\n\r\0"
+a2: .ascii "A20 Gate Enable!\n\r\0"
+pm: .ascii "Protected Mode Enable!\n\r\0"
+
 .align 4
 dap:
   .byte 0x10 	# size of DAP (16 bytes)

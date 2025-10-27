@@ -139,17 +139,26 @@ int term_printf(const char *str, ...){
         case 'd':
           int a = va_arg(ptr, int);
           char buf[20];
-          uint8_t i=0;
+          uint8_t i = 0;
 
-          while(a){
-            buf[i++] = a%10;
-            a/=10;
+          if (a == 0) {
+              term_putc('0');
+              break;
           }
 
-          while(i > 0){
-            term_putc(buf[--i] + '0');
+          if (a < 0) {
+              term_putc('-');
+              a = -a;
           }
 
+          while (a > 0 && i < sizeof(buf)) {
+              buf[i++] = a % 10;
+              a /= 10;
+          }
+
+          while (i > 0) {
+              term_putc('0' + buf[--i]);
+          }
           break;
         case 'x':
           term_print("0x");

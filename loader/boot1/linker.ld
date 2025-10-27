@@ -24,15 +24,15 @@ SECTIONS
   {
     *(.bss COMMON)
   }
-  
-  .pmode16 :
-  {
-    *(.pmode16)
-  }
 
-  .rmode :
-  {
-    *(.rmode)
-  }
+  /* .pmode16 : */
+  /* { */
+  /*   *(.pmode16) */
+  /* } */
+
+  /* .rmode : */
+  /* { */
+  /*   *(.rmode) */
+  /* } */
 }
 

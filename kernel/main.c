@@ -4,6 +4,7 @@
 #include "interrupts.h"
 #include "pic.h"
 #include "pit.h"
+#include "utils.h"
 
 #ifdef __linux__
   #error "ERROR: Must be compiled via cross-compiler"
@@ -14,7 +15,8 @@
 void kernel_main(){
   interrupts_disable(); // -------
 
-  term_clear();
+  // term_clear();
+  ASSERT(false);
   
   interrupts_init();
 
