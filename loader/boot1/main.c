@@ -6,13 +6,11 @@
 #include "multiboot2.h"
 #include <stdint.h>
 #include "string.h"
-#include "term.h"
+#include "serial.h"
+#include "printf.h"
 
 #include "elf.h"
-
-#define KERNEL_START_ADDR ((uint8_t*)0x100000)
-#define KERNEL_START_SECTOR (12)
-#define DISK_BUFFER_ADDR ((uint8_t*)0x8000)
+#include "constants.h"
 
 int check_for_cpuid(void);
 int check_for_longmode(void);
@@ -34,15 +32,10 @@ void load_sector(uint16_t sector, uint16_t num_sectors, uint8_t* address){
     address += (sectors_now << 9);
     num_sectors -= sectors_now;
   }
-
-#ifdef DEBUG
-  // Print out first 16 bytes
-  //for(uint8_t *i=(uint8_t*)DISK_BUFFER_ADDR; i<((uint8_t*)DISK_BUFFER_ADDR + 16); i++){
-  //  term_putbyte(*(i) & 0xFF);
-  //  term_putc('\n');
-  //}
-#endif
 }
+
+void get_basic_meminfo(uint32_t *mem_lower, uint32_t *mem_upper);
+uint32_t get_single_mmap(struct multiboot_mmap_entry *mmap_entry);
 
 static Elf64_Ehdr local_ehdr;
 
@@ -53,6 +46,8 @@ typedef struct {
 } load_info_t;
 
 int main(){
+  serial_init(COM1);
+
   // Load a sector into disk buffer
   load_sector_asm(KERNEL_START_SECTOR, 1);
 
@@ -62,11 +57,11 @@ int main(){
     
   // Confirm ELF magic number
   if(memcmp(e_header->e_ident, ELFMAG, SELFMAG) != 0){
-    term_print("ELF magic incorrect!\n");
+    printf(DEV_SERIAL_COM1, "ELF magic incorrect!\n");
     while(1);
   }
 
-  term_print("Elf header obtained!\n");
+  printf(DEV_SERIAL_COM1, "Elf header obtained!\n");
 
   // Load program header
   load_info_t linfo[5];
@@ -81,20 +76,7 @@ int main(){
       linfo[j].addr = (uint8_t *)phdr->p_paddr;
       linfo[j].offset = phdr->p_offset;
 
-#ifdef DEBUG
-      term_print("Load\n 0x");
-      term_putbyte(phdr->p_filesz >> 8);
-      term_putbyte(phdr->p_filesz);
-      term_print(" bytes to \n 0x");
-      term_putbyte(phdr->p_paddr>> 24);
-      term_putbyte(phdr->p_paddr >> 16);
-      term_putbyte(phdr->p_paddr >> 8);
-      term_putbyte(phdr->p_paddr);
-      term_print(" from \n 0x");
-      term_putbyte(phdr->p_offset>>8);
-      term_putbyte(phdr->p_offset);
-      term_print("\n\n");
-#endif
+      printf(DEV_SERIAL_COM1, "Linfo[%d] = %x\n\r", j, linfo[j].addr);
       j++;
     }
   }
@@ -115,14 +97,64 @@ int main(){
     while(1) {}
   }
 
-  // Check for tags
-  // struct multiboot_header_tag *tag = mhdr + sizeof(struct multiboot_header);
-  // while(1){
-  //   switch(tag->type){
-  //     case MULTIBOOT_TAG_TYPE_BASIC_MEMINFO:
-  //
-  //   }
-  // }
+  // Check for tag requests
+  struct multiboot_header_tag *tag = (struct multiboot_header_tag *)((uint8_t*)mhdr + sizeof(struct multiboot_header));
+  volatile uint32_t tags_requested_bmap = 0;
+
+  while(tag->type != MULTIBOOT_HEADER_TAG_END){
+    switch(tag->type){
+      case MULTIBOOT_HEADER_TAG_INFORMATION_REQUEST:
+        struct multiboot_header_tag_information_request *t = (struct multiboot_header_tag_information_request*)tag;
+        for(uint8_t i=0; i<(t->size - 8)/4; i++){
+          tags_requested_bmap |= (1<<t->requests[i]);
+        }
+        break;
+      default: break;
+    }
+    tag = (struct multiboot_header_tag *)((uintptr_t)tag + tag->size);
+    // align for next tag
+    tag = (struct multiboot_header_tag *)(((uintptr_t)tag + 7) & ((uintptr_t)~7));
+  }
+
+  printf(DEV_SERIAL_COM1, "Tags Requested: %d\n", tags_requested_bmap);
+
+  // Loop through requested tags and return info
+  uint32_t *multiboot_return = (uint32_t *)MULTIBOOT_RETURN_INFO_ADDR;
+  multiboot_return[0] = 2;// total_size
+  multiboot_return[1] = 0;// reserved
+  
+  struct multiboot_tag *multiboot_return_curr = (struct multiboot_tag *)(multiboot_return + 2);
+
+  uint8_t curr_tag_type = 0;
+
+  while(tags_requested_bmap != 0){
+    if(tags_requested_bmap & 0x1){
+      switch(curr_tag_type){
+        case MULTIBOOT_TAG_TYPE_BASIC_MEMINFO:
+          struct multiboot_tag_basic_meminfo *t = (struct multiboot_tag_basic_meminfo *)multiboot_return_curr;
+          get_basic_meminfo((uint32_t*)&t->mem_lower, (uint32_t*)&t->mem_upper);
+          multiboot_return_curr->size = sizeof(struct multiboot_tag_basic_meminfo);
+          break;
+        case MULTIBOOT_TAG_TYPE_MMAP:
+          struct multiboot_tag_mmap *t2 = (struct multiboot_tag_mmap *)multiboot_return_curr;
+          struct multiboot_mmap_entry *curr_entry = t2->entries;
+          while(get_single_mmap(curr_entry) != 1){
+            curr_entry++;
+          }
+          t2->entry_size = 24;
+          multiboot_return_curr->size = (uintptr_t)curr_entry - (uintptr_t)t2;
+          t2->entry_version = 0;
+          break;
+        default: break;
+      }
+      multiboot_return_curr->type = curr_tag_type;
+    }
+
+    tags_requested_bmap >>= 1;
+    curr_tag_type++;
+    multiboot_return[0] += multiboot_return_curr->size;
+    multiboot_return_curr = (struct multiboot_tag *)(((uintptr_t)multiboot_return_curr + multiboot_return_curr->size + 7) & ((uintptr_t)~7));
+  }
 
   // Load remaining sections
   for(uint16_t i=0; i<j; i++){
@@ -131,16 +163,16 @@ int main(){
 
   // Check for CPUID
   if(check_for_cpuid() != 1){
-    term_print("No CPUID!\n");
+    printf(DEV_SERIAL_COM1, "No CPUID!\n");
   }
 
   // Check for CPUID extensions and check for long mode
   if(check_for_longmode() != 1){
-    term_print("No long mode!\n");
+    printf(DEV_SERIAL_COM1, "No long mode!\n");
     while(1) {}
   }
 
-  term_print("Entering kernel...\n");
+  printf(DEV_SERIAL_COM1, "Entering kernel at %x\n", local_ehdr.e_entry);
   _kernel_entry = local_ehdr.e_entry;
 
   long_mode();

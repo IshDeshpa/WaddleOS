@@ -40,6 +40,7 @@ BOOT1_CFLAGS=-std=gnu99 -ffreestanding -m32 -mno-red-zone -mno-mmx -mno-sse -mno
 
 # QEMU
 QEMU_FLAGS=-cpu qemu64
+QEMU_SERIAL_OUT?=stdio
 
 ARCH?=64
 ifeq ($(ARCH),64)
@@ -133,19 +134,19 @@ $(BUILD_DIR) $(KERNEL_BUILD_DIR) $(GCC_BUILD_DIR) $(BINUTILS_BUILD_DIR) $(LOADER
 	mkdir -p $@
 
 run:
-	qemu-system-$(QEMU_VER) $(QEMU_FLAGS) -drive format=raw,file=build/disk.img
+	qemu-system-$(QEMU_VER) $(QEMU_FLAGS) -drive format=raw,file=build/disk.img -serial $(QEMU_SERIAL_OUT)
 
 debug:
-	qemu-system-$(QEMU_VER) $(QEMU_FLAGS) -drive format=raw,file=build/disk.img -S -s
+	qemu-system-$(QEMU_VER) $(QEMU_FLAGS) -drive format=raw,file=build/disk.img -S -s -serial $(QEMU_SERIAL_OUT)
 
 gdb:
-	$(CROSS_BUILD_DIR)/bin/x86_64-elf-gdb $(GDB_ELF)
+	$(CROSS_BUILD_DIR)/bin/x86_64-elf-gdb $(GDB_ELF) -ex "target remote localhost:1234"
 
 mon:
-	qemu-system-$(QEMU_VER) $(QEMU_FLAGS) -drive format=raw,file=build/disk.img -monitor stdio
+	qemu-system-$(QEMU_VER) $(QEMU_FLAGS) -drive format=raw,file=build/disk.img -monitor stdio -no-reboot -no-shutdown
 
 trace:
-	qemu-system-$(QEMU_VER) $(QEMU_FLAGS) -drive format=raw,file=build/disk.img -d cpu,exec,in_asm -D qemu.log
+	qemu-system-$(QEMU_VER) $(QEMU_FLAGS) -drive format=raw,file=build/disk.img -serial $(QEMU_SERIAL_OUT) -d int,cpu_reset -D qemu.log -no-reboot
 
 dump0: $(LOADER_BUILD_DIR)/boot0.o $(BINUTILS_STAMP)
 	$(OBJDUMP) -d $< -m i8086

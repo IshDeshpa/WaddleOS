@@ -101,18 +101,21 @@ void *memset(void *a, int x, size_t n){
   while(n > 4){
     *((uint64_t*)curr_byte) = x_64;
     curr_byte += 8;
+    n -= 8;
   }
 
   uint32_t x_32 = (uint32_t)x_64;
   while(n > 2){
     *((uint32_t*)curr_byte) = x_32;
     curr_byte += 4;
+    n -= 4;
   }
 
   uint16_t x_16 = (uint16_t)x_64;
   while(n > 1){
     *((uint16_t*)curr_byte) = x_16;
     curr_byte += 2;
+    n -= 2;
   }
 
   if(n == 1) *curr_byte = x;

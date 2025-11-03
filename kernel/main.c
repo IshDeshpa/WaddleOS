@@ -1,10 +1,13 @@
 #include "idt.h"
 #include "paging.h"
 #include "term.h"
+#include "serial.h"
+#include "printf.h"
 #include "interrupts.h"
 #include "pic.h"
 #include "pit.h"
 #include "utils.h"
+#include "multiboot2.h"
 
 #ifdef __linux__
   #error "ERROR: Must be compiled via cross-compiler"
@@ -12,25 +15,28 @@
   #error "ERROR: Must be compiled with an x86-elf compiler"
 #endif
 
+extern uint32_t mboot_magic;
+
 void kernel_main(){
   interrupts_disable(); // -------
+  
+  ASSERT(mboot_magic == MULTIBOOT2_BOOTLOADER_MAGIC);
 
-  // term_clear();
-  ASSERT(false);
+  term_clear();
+  serial_init(COM1);
   
   interrupts_init();
 
   paging_init();
 
+  ASSERT(false);
+
   //pit_init(100); // 100 hz
   
-  uint8_t pic_mask_master = pic_get_mask(0);
-  term_printf("Master mask: %x\n\r", pic_mask_master);
-
   interrupts_enable(); // -------
 
   for(int i=0; i<100; i++){
-    term_printf("Hello World! %s %d %x\n\r", "abc", i, i);
+    printf(DEV_SERIAL_COM1, "Hello World! %s %d %x\n\r", "abc", i, i);
 
     for(int j=0; j<50000000; j++); // delay
   }

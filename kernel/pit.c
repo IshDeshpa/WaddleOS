@@ -2,11 +2,11 @@
 // https://wiki.osdev.org/Programmable_Interval_Timer
 #include "interrupts.h"
 #include "utils.h"
-#include "term.h"
+#include "printf.h"
 #include "io.h"
 
 void timer_interrupt(interrupt_frame_t *interrupt_frame){
-  term_printf("TIMER INTERRUPT\n\r");
+  printf(DEV_SERIAL_COM1, "TIMER INTERRUPT\n\r");
 }
 
 /**
@@ -73,8 +73,6 @@ void pit_init(uint16_t timer_freq_hz){
 
   outb(PIT_DATA_0, divisor & 0xFF);
   outb(PIT_DATA_0, (divisor >> 8) & 0xFF);
-
-  term_printf("Divisor %d\n\r", divisor);
 }
 
 

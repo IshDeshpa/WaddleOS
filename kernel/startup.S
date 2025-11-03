@@ -7,6 +7,13 @@ multiboot_hdr:
   .long MULTIBOOT_ARCHITECTURE_I386
   .long multiboot_hdr_end - multiboot_hdr
   .long -(MULTIBOOT2_HEADER_MAGIC + MULTIBOOT_ARCHITECTURE_I386 + multiboot_hdr_end - multiboot_hdr)
+multiboot_tags_requested:
+  .align MULTIBOOT_TAG_ALIGN
+  .word MULTIBOOT_HEADER_TAG_INFORMATION_REQUEST
+  .word 0
+  .long 16
+  .long MULTIBOOT_TAG_TYPE_BASIC_MEMINFO
+  .long MULTIBOOT_TAG_TYPE_MMAP
 multiboot_tag_align:
   .align MULTIBOOT_TAG_ALIGN
   .word MULTIBOOT_HEADER_TAG_MODULE_ALIGN
@@ -26,6 +33,11 @@ multiboot_tag_framebuffer:
   .long 0
   .long 0
   .long 32
+multiboot_tag_terminator:
+  .align MULTIBOOT_TAG_ALIGN
+  .word MULTIBOOT_HEADER_TAG_END
+  .word 0
+  .long 8
 multiboot_hdr_end:
   .align MULTIBOOT_TAG_ALIGN
 
@@ -68,13 +80,20 @@ gdt_desc:
   .word gdt_end - gdt - 1 // size of gdt (0-15)
   .quad gdt      // gdt address (16-47)
 
+.global mboot_magic
+.global mboot_tags
+mboot_magic: .long 0
+mboot_tags: .long 0
+
 .section .text
 .global _start
 .type _start, @function
-
 .code64
 _start:
   cli // disable interrupts
+
+  movl %eax, (mboot_magic)
+  movl %ebx, (mboot_tags)
 
   // Stack pointer
   lea _stack_top(%rip), %rsp

@@ -1,6 +1,5 @@
 #include <stdint.h>
 #include <stddef.h>
-#include <stdarg.h>
 #include "term.h"
 #include "io.h"
 
@@ -56,12 +55,6 @@ void term_clear(){
 uint8_t term_col = 0;
 uint8_t term_row = 0;
 
-// static inline uint8_t inb(uint16_t port) {
-//     uint8_t ret;
-//     __asm__ volatile ( "inb %1, %0" : "=a"(ret) : "Nd"(port) );
-//     return ret;
-// }
-
 // Read cursor position into term_col and term_row
 void term_readcursor(){
   uint16_t pos = 0;
@@ -111,7 +104,6 @@ void term_putc(char c){
     term_col = 0;
     term_row = VGA_ROWS-1;
   }
-
 }
 
 static const char *hexdig_lookup = "0123456789ABCDEF";
@@ -120,61 +112,4 @@ void term_putbyte(uint8_t b){
   term_putc(hexdig_lookup[b&0xF]);
 }
 
-#define MAX_STR_SIZE 500
-void term_print(const char* str){
-  for(size_t i=0; str[i]!='\0' && i < MAX_STR_SIZE; i++) term_putc(str[i]);
-}
 
-#define MAX_PRINTF_LEN (0xFFFFFFFF)
-int term_printf(const char *str, ...){
-  va_list ptr;
-  va_start(ptr, str);
-  
-  for(int i=0; str[i] != '\0' && i < MAX_PRINTF_LEN; i++){
-    if(str[i] == '%'){
-      switch (str[i+1]) {
-        case 's':
-          term_print(va_arg(ptr, char*));
-          break;
-        case 'd':
-          int a = va_arg(ptr, int);
-          char buf[20];
-          uint8_t i = 0;
-
-          if (a == 0) {
-              term_putc('0');
-              break;
-          }
-
-          if (a < 0) {
-              term_putc('-');
-              a = -a;
-          }
-
-          while (a > 0 && i < sizeof(buf)) {
-              buf[i++] = a % 10;
-              a /= 10;
-          }
-
-          while (i > 0) {
-              term_putc('0' + buf[--i]);
-          }
-          break;
-        case 'x':
-          term_print("0x");
-          term_putbyte(va_arg(ptr, int));
-          break;
-        default:
-          term_putc('X');
-          break;
-      }
-
-      i++;
-    } else {
-      term_putc(str[i]);
-    }
-  }
-
-  va_end(ptr);
-  return 0;
-}

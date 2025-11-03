@@ -1,3 +1,7 @@
+#define ASM_FILE 1
+#include "multiboot2.h"
+#include "constants.h"
+
 .section .text._start
 .global _start
 .code16
@@ -66,11 +70,11 @@ load_sector_asm:
 
   # Make sure sector number >= 12
   cmp $12, %ax
-  jnge _ret
+  jnge _ret_load_sector_asm
 
   # Make sure number of sectors <= 24
   cmp $24, %bx
-  jnle _ret
+  jnle _ret_load_sector_asm
 
   # 1) change dap
   lea dap, %edx
@@ -83,7 +87,7 @@ load_sector_asm:
   # pop arguments so that stack restores properly
   popw %ax
 
-_ret:
+_ret_load_sector_asm:
   popfl
   popal
   leave
@@ -117,6 +121,140 @@ _rmode_load_sector:
   leave
   ret
 
+.section .data
+mem_lower_addr: .long 0
+mem_upper_addr: .long 0
+
+.section .text
+.global get_basic_meminfo
+.type get_basic_meminfo, @function
+.code32
+get_basic_meminfo:
+  push %ebp
+  movl %esp, %ebp
+  
+  pushal
+  pushfl
+
+  pushw $_rmode_get_basic_meminfo 
+  call run_rmode_subrt
+  popw %ax
+
+  # save in passed addresses
+  movl 8(%ebp), %esi
+  movl (mem_lower_addr), %eax
+  movl %eax, (%esi)
+
+  movl 12(%ebp), %esi
+  movl (mem_upper_addr), %eax
+  movl %eax, (%esi)
+
+_ret_get_basic_meminfo:
+  popfl
+  popal
+  leave
+  ret
+
+.global _rmode_get_basic_meminfo
+.type _rmode_get_basic_meminfo, @function
+.code16
+_rmode_get_basic_meminfo:
+  push %bp
+  mov %sp, %bp
+
+  xor %ax, %ax
+  xor %bx, %bx
+
+  # get lower and upper mem size
+  mov $0xE801, %ax
+  int $0x15
+  jc .
+
+  # store lower mem
+  mov $mem_lower_addr, %si
+  mov %ax, (%si)
+  
+  # multiply bx by 64
+  shl $6, %bx
+  # store in mem upper
+  mov $mem_upper_addr, %si
+  mov %bx, (%si)
+
+  leave
+  ret
+
+.section .data
+single_mmap_entry:
+  .skip 24
+ebx_ret:
+  .long 0
+cl_ret:
+  .byte 0
+mmap_finished:
+  .byte 0
+
+.section .text
+.global get_single_mmap
+.type get_single_mmap, @function
+.code32
+get_single_mmap:
+  push %ebp
+  movl %esp, %ebp
+  
+  pushal
+  pushfl
+
+  mov $0x0, (mmap_finished)
+
+  pushw $_rmode_get_single_mmap
+  call run_rmode_subrt
+  popw %ax
+
+  # move to address passed by user
+  mov 8(%ebp), %edi
+  mov $single_mmap_entry, %esi
+  mov $24, %ecx
+  cld
+  rep movsb
+
+_ret_get_single_mmap:
+  popfl
+  popal
+
+  movzbl mmap_finished, %eax
+
+  leave
+  ret
+
+.global _rmode_get_single_mmap
+.type _rmode_get_single_mmap, @function
+.code16
+_rmode_get_single_mmap:
+  push %bp
+  mov %sp, %bp
+
+  mov $0xE820, %ax
+  mov (ebx_ret), %bx
+  mov $24, %cx
+  movl $0x534D4150, %edx
+  movl $single_mmap_entry, %edi
+  int $0x15
+
+  # Failure
+  cmp $0x534D4150, %eax
+  jne .
+
+  cmp $0x0, %ebx
+  jne _not_done
+  mov $1, (mmap_finished)
+
+_not_done:
+  movl %ebx, (ebx_ret)
+  movb %cl, (cl_ret)
+
+  leave
+  ret
+
 .global run_rmode_subrt
 .type run_rmode_subrt, @function
 .code32
@@ -133,6 +271,7 @@ run_rmode_subrt:
 
   # Real mode address, defined in linker.ld
   ljmp $0x18, $_pmode16_entry
+
 
 .code16
 _pmode16_entry:
@@ -158,7 +297,7 @@ _real_mode_entry:
   sti
 
   movw 8(%bp), %bx
-  call %bx
+  call *%bx
 
   mov   %cr0, %eax
   or    $1, %eax          # set PE bit again
@@ -167,6 +306,8 @@ _real_mode_entry:
 
 .code32
 pmode_return:
+  cli
+
   mov $0x20, %ax       # Load data segment selector
   mov %ax, %ds         # Load data segment
   mov %ax, %es         # Load extra segment
@@ -235,8 +376,9 @@ _has_long_mode:
 
 .equ p4t_addr, 0x10000
 .equ p3t_addr, 0x11000
-.equ p2t_addr, 0x12000
-.equ p1t_addr, 0x13000
+.equ p3t_2_addr, 0x12000
+.equ p2t_addr, 0x13000
+.equ p1t_addr, 0x14000
 
 .equ pt_addr_mask, 0xffffffffff000
 .equ pt_present, 0x1
@@ -268,17 +410,29 @@ long_mode:
   # reset eax to page table base
   mov %cr3, %eax
   
-  # p4 first entry points to p3
+  # for the identity map
   movl $((p3t_addr & pt_addr_mask) | pt_present | pt_readable), %eax
-  movl $0, %edx
   movl %eax, p4t_addr
+  movl $0, %edx
   movl %edx, p4t_addr+4
+
+  # for the high level map
+  movl $((p3t_2_addr & pt_addr_mask) | pt_present | pt_readable), %eax
+  movl %eax, p4t_addr + (511 * pt_entry_size)
+  movl $0, %edx
+  movl %edx, p4t_addr + (511 * pt_entry_size) + 4
 
   # p3 first entry points to p2
   movl $((p2t_addr & pt_addr_mask) | pt_present | pt_readable), %eax
   movl $0, %edx
   movl %eax, p3t_addr
   movl %edx, p3t_addr+4
+
+  # p3_2 510th entry points to p2
+  movl $((p2t_addr & pt_addr_mask) | pt_present | pt_readable), %eax
+  movl $0, %edx
+  movl %eax, p3t_2_addr + (510 * pt_entry_size)
+  movl %edx, p3t_addr + (510 * pt_entry_size) + 4
 
   # p2 first entry points to p1
   movl $((p1t_addr & pt_addr_mask) | pt_present | pt_readable), %eax
@@ -316,6 +470,10 @@ _set_entry: # loops 512 times
   or $0x80000000, %eax
   mov %eax, %cr0
 
+  # Return info to kernel
+  movl $MULTIBOOT2_BOOTLOADER_MAGIC, %eax
+  movl $MULTIBOOT_RETURN_INFO_ADDR, %ebx
+
   ljmp $0x08, $_long_mode_entry
 
 .code64
@@ -327,8 +485,8 @@ _kernel_entry:
 
 .section .text
 _long_mode_entry:
-  mov _kernel_entry(%rip), %rax   # load 64-bit pointer stored at _kernel_entry
-  jmp *%rax                       # jump to kernel entry
+  mov _kernel_entry(%rip), %rsi   # load 64-bit pointer stored at _kernel_entry
+  jmp *%rsi                       # jump to kernel entry
 
 .section .data
 .align 4
