@@ -3,6 +3,7 @@
 
 #define IDT_MAX_DESCRIPTORS (256)
 
+
 __attribute__((aligned(0x10))) static idt_entry_t idt[IDT_MAX_DESCRIPTORS]; // Create an array of IDT entries; aligned for performance
 static idtr_t idtr;
 

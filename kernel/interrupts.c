@@ -3,8 +3,10 @@
 #include "idt.h"
 #include "pic.h"
 #include "utils.h"
-#include "term.h"
-#include "printf.h"
+
+#define LOG_LEVEL 0
+#define LOG_ENABLE 0
+#include "log.h"
 
 static void *exc_stubs[32] = {
   &exc_0, &exc_1, &exc_2, &exc_3,
@@ -77,8 +79,8 @@ bool interrupts_active(){
 }
 
 void exception_handler(interrupt_frame_t *interrupt_frame, uint64_t vector_number) {
-  printf(DEV_SERIAL_COM1, "Vector Number %d\n\r", vector_number);
-  printf(DEV_SERIAL_COM1, "Error code: %d\n\r", interrupt_frame->error_code);
+  log(LOG_TRACE, "Vector Number %d\n\r", vector_number);
+  log(LOG_TRACE, "Error code: %d\n\r", interrupt_frame->error_code);
  
   ASSERT(vector_number < 32);
   ASSERT(exc_handlers[vector_number] != 0);
@@ -89,7 +91,7 @@ void exception_handler(interrupt_frame_t *interrupt_frame, uint64_t vector_numbe
 }
 
 void interrupt_handler(interrupt_frame_t *interrupt_frame, uint64_t irq_number){
-  printf(DEV_SERIAL_COM1, "IRQ %d\n\r", irq_number);
+  log(LOG_TRACE, "IRQ %d\n\r", irq_number);
 
   ASSERT(irq_number >= 32 && irq_number < 48);
   ASSERT(isr_handlers[irq_number - 32] != 0);
@@ -97,6 +99,4 @@ void interrupt_handler(interrupt_frame_t *interrupt_frame, uint64_t irq_number){
   isr_handlers[irq_number - 32](interrupt_frame);
 
   pic_eoi(irq_number);
-
-  while(1);
 }

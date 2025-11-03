@@ -29,14 +29,12 @@ void kernel_main(){
 
   paging_init();
 
-  ASSERT(false);
-
-  //pit_init(100); // 100 hz
+  pit_init(100); // 100 hz
   
   interrupts_enable(); // -------
 
   for(int i=0; i<100; i++){
-    printf(DEV_SERIAL_COM1, "Hello World! %s %d %x\n\r", "abc", i, i);
+    printf("Hello World! %s %d %x\n\r", "abc", i, i);
 
     for(int j=0; j<50000000; j++); // delay
   }

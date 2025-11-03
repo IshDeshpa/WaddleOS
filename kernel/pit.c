@@ -5,8 +5,12 @@
 #include "printf.h"
 #include "io.h"
 
+#define LOG_LEVEL 1
+#define LOG_ENABLE 0
+#include "log.h"
+
 void timer_interrupt(interrupt_frame_t *interrupt_frame){
-  printf(DEV_SERIAL_COM1, "TIMER INTERRUPT\n\r");
+  log(LOG_TRACE, "TIMER INTERRUPT\n\r");
 }
 
 /**

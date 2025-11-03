@@ -19,21 +19,18 @@ static inline void print(void (*putc)(char), char *str){
 }
 
 #define MAX_PRINTF_LEN (0xFFFFFFFF)
-int printf(printf_device_t device, const char *str, ...){
+int vprintf_to_device(printf_device_t device, const char *str, va_list args){ 
   void (*putc)(char) = get_device_putc(device);
 
-  va_list ptr;
-  va_start(ptr, str);
-  
   for(unsigned int i=0; str[i] != '\0' && i < MAX_PRINTF_LEN; i++){
     if(str[i] == '%'){
       switch (str[i+1]) {
         case 's': {
-          print(putc, va_arg(ptr, char*));
+          print(putc, va_arg(args, char*));
           break;
         }
         case 'd': {
-          int a = va_arg(ptr, int);
+          int a = va_arg(args, int);
           char buf[20];
           uint8_t i = 0;
 
@@ -58,7 +55,7 @@ int printf(printf_device_t device, const char *str, ...){
           break;
         }
         case 'x': {
-          uint64_t val = va_arg(ptr, uint64_t);
+          uint64_t val = va_arg(args, uint64_t);
           char hex[17]; // 16 digits + null terminator
           for (int k = 0; k < 16; k++) {
               int nibble = (val >> ((15 - k) * 4)) & 0xF;
@@ -82,6 +79,27 @@ int printf(printf_device_t device, const char *str, ...){
     }
   }
 
-  va_end(ptr);
+  va_end(args);
   return 0;
+}
+
+int vprintf(const char *str, va_list args){
+  int ret = vprintf_to_device(DEFAULT_DEVICE, str, args);
+  return ret;
+}
+
+int printf_to_device(printf_device_t device, const char *str, ...){
+  va_list args;
+  va_start(args, str);
+  int ret = vprintf_to_device(device, str, args);
+  va_end(args);
+  return ret;
+}
+
+int printf(const char *str, ...){
+  va_list args;
+  va_start(args, str);
+  int ret = vprintf_to_device(DEFAULT_DEVICE, str, args);
+  va_end(args);
+  return ret;
 }

@@ -57,11 +57,11 @@ int main(){
     
   // Confirm ELF magic number
   if(memcmp(e_header->e_ident, ELFMAG, SELFMAG) != 0){
-    printf(DEV_SERIAL_COM1, "ELF magic incorrect!\n");
+    printf("ELF magic incorrect!\n");
     while(1);
   }
 
-  printf(DEV_SERIAL_COM1, "Elf header obtained!\n");
+  printf("Elf header obtained!\n");
 
   // Load program header
   load_info_t linfo[5];
@@ -76,7 +76,7 @@ int main(){
       linfo[j].addr = (uint8_t *)phdr->p_paddr;
       linfo[j].offset = phdr->p_offset;
 
-      printf(DEV_SERIAL_COM1, "Linfo[%d] = %x\n\r", j, linfo[j].addr);
+      printf("Linfo[%d] = %x\n\r", j, linfo[j].addr);
       j++;
     }
   }
@@ -116,7 +116,7 @@ int main(){
     tag = (struct multiboot_header_tag *)(((uintptr_t)tag + 7) & ((uintptr_t)~7));
   }
 
-  printf(DEV_SERIAL_COM1, "Tags Requested: %d\n", tags_requested_bmap);
+  printf("Tags Requested: %d\n", tags_requested_bmap);
 
   // Loop through requested tags and return info
   uint32_t *multiboot_return = (uint32_t *)MULTIBOOT_RETURN_INFO_ADDR;
@@ -163,16 +163,16 @@ int main(){
 
   // Check for CPUID
   if(check_for_cpuid() != 1){
-    printf(DEV_SERIAL_COM1, "No CPUID!\n");
+    printf("No CPUID!\n");
   }
 
   // Check for CPUID extensions and check for long mode
   if(check_for_longmode() != 1){
-    printf(DEV_SERIAL_COM1, "No long mode!\n");
+    printf("No long mode!\n");
     while(1) {}
   }
 
-  printf(DEV_SERIAL_COM1, "Entering kernel at %x\n", local_ehdr.e_entry);
+  printf("Entering kernel at %x\n", local_ehdr.e_entry);
   _kernel_entry = local_ehdr.e_entry;
 
   long_mode();

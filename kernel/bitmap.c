@@ -67,6 +67,6 @@ uint64_t bitmap_test_and_flip(bitmap_t *bmp, bool value_to_test) {
 
 void bitmap_print(bitmap_t *bmp){
   for(unsigned int i=0; i<bmp->size/8; i++){
-    printf(DEV_SERIAL_COM1, " %x ", ((uint64_t*)bmp->buf)[i]);
+    printf(" %x ", ((uint64_t*)bmp->buf)[i]);
   }
 }

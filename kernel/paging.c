@@ -1,19 +1,23 @@
 #include "paging.h"
 #include "interrupts.h"
 #include "multiboot2.h"
-#include "term.h"
-#include "printf.h"
 #include <stddef.h>
 #include "string.h"
 #include "bitmap.h"
 #include "multiboot_parser.h"
 
+#define LOG_LEVEL 0
+#define LOG_ENABLE 0
+#include "log.h"
+
 static struct multiboot_mmap_entry memory_map[10];
-int memory_map_len = 0;
+static int memory_map_len = 0;
 
 uint64_t pool_pages_total;
 static uintptr_t phys_mem_end;
 extern char _kernel_end;
+
+static p4e_t *init_pml4 = NULL;
 
 typedef struct {
   bitmap_t allocated_bmp;
@@ -57,8 +61,8 @@ static void memory_map_init(){
   // Print
   //#ifdef DEBUG
   for(int i=0; i<memory_map_len; i++){
-    printf(DEV_SERIAL_COM1, "\t%x-%x\n\r", memory_map[i].addr, memory_map[i].len);
-    printf(DEV_SERIAL_COM1, "\t\t%d\n\r", memory_map[i].type);
+    log(LOG_TRACE, "\t%x-%x\n\r", memory_map[i].addr, memory_map[i].len);
+    log(LOG_TRACE, "\t\t%d\n\r", memory_map[i].type);
   }
   //#endif
 
@@ -106,14 +110,14 @@ static void memory_pool_init(void *pool_base, size_t pool_pages, pool_t *pool_st
   }
 }
 
-void *pde_init(pde_t *entry, bool allow_user_access){
+static inline void *pde_init(pde_t *entry, bool allow_user_access){
   void *base;
   if (GET_BITS(*entry, PDE_PTE_PRESENT_POS, PDE_PTE_PRESENT_LEN) == 0){
     base = virt_to_phys(paging_get_page(PALLOC_ZERO));
-    printf(DEV_SERIAL_COM1, "Allocating new page for PDE...\n\r");
+    log(LOG_TRACE, "Allocating new page for PDE...\n\r");
   } else{
     base = (void *)(GET_BITS(*entry, PDE_PTE_BASE_POS, PDE_PTE_BASE_LEN) << 12);
-    printf(DEV_SERIAL_COM1, "Using existing page for PDE... %x\n\r", base);
+    log(LOG_TRACE, "Using existing page for PDE... %x\n\r", base);
   }
 
   // Clear
@@ -128,7 +132,7 @@ void *pde_init(pde_t *entry, bool allow_user_access){
   return base;
 }
 
-void pte_init(pte_t *entry, void *phys_addr, bool allow_user_access){
+static inline void pte_init(pte_t *entry, void *phys_addr, bool allow_user_access){
   // Clear
   memset(entry, 0, sizeof(pte_t));
 
@@ -139,38 +143,42 @@ void pte_init(pte_t *entry, void *phys_addr, bool allow_user_access){
   *entry = SET_BITS(*entry, PDE_PTE_PRESENT_POS, PDE_PTE_PRESENT_LEN, 1); // present
 }
 
-p4e_t *init_pml4 = NULL;
+void paging_map_page(void *vaddr, void *paddr){
+    uint32_t pml4_ofs = GET_PML4_OFS((uintptr_t)vaddr);
+    p3e_t *pml3 = pde_init(&init_pml4[pml4_ofs], false);
+    log(LOG_TRACE, "PML4 Offset: %d\n\r", pml4_ofs);
+    log(LOG_TRACE, "PML3 Address: %x\n\r", pml3);
+
+    uint32_t pml3_ofs = GET_PML3_OFS((uintptr_t)vaddr);
+    p2e_t *pml2 = pde_init(&pml3[pml3_ofs], false);
+    log(LOG_TRACE, "PML3 Offset: %d\n\r", pml3_ofs);
+    log(LOG_TRACE, "PML2 Address: %x\n\r", pml2);
+
+    uint32_t pml2_ofs = GET_PML2_OFS((uintptr_t)vaddr);
+    p1e_t *pml1 = pde_init(&pml2[pml2_ofs], false);
+    log(LOG_TRACE, "PML2 Offset: %d\n\r", pml2_ofs);
+    log(LOG_TRACE, "PML1 Address: %x\n\r", pml1);
+
+    uint32_t pml1_ofs = GET_PML1_OFS((uintptr_t)vaddr);
+    pte_init(&pml1[pml1_ofs], paddr, false);
+    log(LOG_TRACE, "PML1 Offset: %d\n\r", pml1_ofs);
+}
+
 static void page_tables_init(){
   init_pml4 = paging_get_page(PALLOC_ZERO);
 
   // Map only active kernel code pages and pool metadata pages to higher half, starting at 0x0
   for(uint64_t page = 0; page < ((uintptr_t)virt_to_phys(kernel_pool.page_base))/4096; page++){
     void *phys_addr = (void *)(page * PAGE_SIZE);
-    printf(DEV_SERIAL_COM1, "Physical address: %x\n\r", phys_addr);
+    log(LOG_TRACE, "Physical address: %x\n\r", phys_addr);
 
-    uintptr_t virt_addr = (uintptr_t) phys_to_virt(phys_addr);
-    printf(DEV_SERIAL_COM1, "Virtual address: %x\n\r", virt_addr);
+    void *virt_addr = phys_to_virt(phys_addr);
+    log(LOG_TRACE, "Virtual address: %x\n\r", virt_addr);
     
-    uint32_t pml4_ofs = GET_PML4_OFS(virt_addr);
-    p3e_t *pml3 = pde_init(&init_pml4[pml4_ofs], false);
-    printf(DEV_SERIAL_COM1, "PML4 Offset: %d\n\r", pml4_ofs);
-    printf(DEV_SERIAL_COM1, "PML3 Address: %x\n\r", pml3);
-
-    uint32_t pml3_ofs = GET_PML3_OFS(virt_addr);
-    p2e_t *pml2 = pde_init(&pml3[pml3_ofs], false);
-    printf(DEV_SERIAL_COM1, "PML3 Offset: %d\n\r", pml3_ofs);
-    printf(DEV_SERIAL_COM1, "PML2 Address: %x\n\r", pml2);
-
-    uint32_t pml2_ofs = GET_PML2_OFS(virt_addr);
-    p1e_t *pml1 = pde_init(&pml2[pml2_ofs], false);
-    printf(DEV_SERIAL_COM1, "PML2 Offset: %d\n\r", pml2_ofs);
-    printf(DEV_SERIAL_COM1, "PML1 Address: %x\n\r", pml1);
-
-    uint32_t pml1_ofs = GET_PML1_OFS(virt_addr);
-    pte_init(&pml1[pml1_ofs], phys_addr, false);
-    printf(DEV_SERIAL_COM1, "PML1 Offset: %d\n\r", pml1_ofs);
+    paging_map_page(virt_addr, phys_addr);
   }
-
+  
+  // convert to phys addr to put in CR3
   void *init_pml4_cr3 = virt_to_phys(init_pml4);
 
   // Load CR3
@@ -182,11 +190,11 @@ static void page_tables_init(){
   );
 }
 
-void page_fault_handler(interrupt_frame_t *frame){
+static void page_fault_handler(interrupt_frame_t *frame){
   uintptr_t fault_addr;
   asm volatile ("mov %%cr2, %0" : "=r"(fault_addr));
 
-  printf(DEV_SERIAL_COM1, "Page fault! %x\n\r", fault_addr);
+  log(LOG_TRACE, "Page fault! %x\n\r", fault_addr);
 }
 
 void paging_init(){
@@ -196,7 +204,7 @@ void paging_init(){
   
   // we know that the kernel is currently loaded at 1MiB, so we want to start the kernel pool past the kernel end
   uintptr_t free_pool_start = ((uintptr_t)&_kernel_end + 0xFFF) & (~0xFFF);
-  printf(DEV_SERIAL_COM1, "Free pool start: %x\n\r", free_pool_start);
+  log(LOG_TRACE, "Free pool start: %x\n\r", free_pool_start);
 
   pool_pages_total = (phys_mem_end - free_pool_start)/4096;
 
@@ -205,8 +213,6 @@ void paging_init(){
 
   // initialize page tables
   page_tables_init();
-
-  printf(DEV_SERIAL_COM1, "Memory map address: %x", memory_map);
 }
 
 void *paging_get_page(uint8_t flags){
@@ -218,11 +224,21 @@ void *paging_get_page(uint8_t flags){
   uint64_t pg_ind = bitmap_test_and_flip(&mem_pool->allocated_bmp, false); 
   void *pg_ptr = pg_ind*4096 + mem_pool->md_base;
 
-  printf(DEV_SERIAL_COM1, "Page index allocated: %d\n\r", pg_ind);
+  log(LOG_TRACE, "Page index allocated: %d\n\r", pg_ind);
   
   if (flags & PALLOC_ZERO){
     memset(pg_ptr, 0, 4096);
   }
 
   return pg_ptr;
+}
+
+// Will only consider vaddr if a user page; kernel pages will auto-map to their proper location in the linear mapping
+void *paging_get_and_map_page(uint8_t flags, void *vaddr){
+  void *paddr = virt_to_phys(paging_get_page(flags));
+  if (flags & PALLOC_USER){
+    paging_map_page(vaddr, paddr);
+  } else {
+    paging_map_page(vaddr, virt_to_phys(vaddr));
+  }
 }
