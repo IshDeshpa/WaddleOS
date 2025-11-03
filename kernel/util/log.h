@@ -48,4 +48,3 @@ static inline void log(log_level_t level, char *str, ...){
   va_end(args);
 }
 #endif
-

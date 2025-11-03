@@ -20,6 +20,7 @@ BINUTILS_STAMP=$(CROSS_BUILD_DIR)/.binutils-built
 KERNEL_BUILD_DIR=$(BUILD_DIR)/kernel
 C_SRCS=$(wildcard kernel/*.c)
 ASM_SRCS=$(wildcard kernel/*.S)
+
 C_OBJS:=$(addprefix $(KERNEL_BUILD_DIR)/, $(notdir $(C_SRCS:.c=.o)))
 ASM_OBJS:=$(addprefix $(KERNEL_BUILD_DIR)/, $(notdir $(ASM_SRCS:.S=.o)))
 OBJS:=$(C_OBJS) $(ASM_OBJS)
