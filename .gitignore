@@ -2,4 +2,5 @@
 build
 binutils-gdb
 gcc
+blog
 *.log
