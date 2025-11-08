@@ -3,4 +3,5 @@ build
 binutils-gdb
 gcc
 blog
+compile_commands.json
 *.log

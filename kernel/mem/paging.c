@@ -4,6 +4,7 @@
 #include <stddef.h>
 #include "string.h"
 #include "bitmap.h"
+#include "utils.h"
 #include "multiboot_parser.h"
 
 #define LOG_LEVEL 0
@@ -59,18 +60,16 @@ static void memory_map_init(){
   }
 
   // Print
-  //#ifdef DEBUG
   for(int i=0; i<memory_map_len; i++){
     log(LOG_TRACE, "\t%x-%x\n\r", memory_map[i].addr, memory_map[i].len);
     log(LOG_TRACE, "\t\t%d\n\r", memory_map[i].type);
   }
-  //#endif
 
   phys_mem_end = memory_map[memory_map_len - 1].addr + memory_map[memory_map_len - 1].len; // subtract 1MiB from memory size allocated for random bootloader crap
 }
 
 static void memory_pool_init(void *pool_base, size_t pool_pages, pool_t *pool_struct){
-  uint8_t md_pages = ((pool_pages * 2) + 4095)/4096; // 2 bits per page, rounded up to nearest page bound
+  uint8_t md_pages = ROUND_UP_TO(pool_pages * 2, 4096); // 2 bits per page, rounded up to nearest page bound
   pool_struct->md_base = pool_base;
   pool_struct->page_base = pool_base + md_pages*4096;
   bitmap_init_buf(&pool_struct->allocated_bmp, pool_base, pool_pages);
@@ -213,6 +212,10 @@ void paging_init(){
 
   // initialize page tables
   page_tables_init();
+}
+
+void *paging_get_pages(uint8_t flags){
+
 }
 
 void *paging_get_page(uint8_t flags){

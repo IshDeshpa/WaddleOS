@@ -27,6 +27,7 @@ void kernel_main(){
   
   interrupts_init();
 
+  // Memory init
   paging_init();
 
   pit_init(100); // 100 hz

@@ -18,6 +18,7 @@ CC=$(CROSS_BUILD_DIR)/bin/$(TARGET)-gcc
 AS=$(CROSS_BUILD_DIR)/bin/$(TARGET)-as
 AR=$(CROSS_BUILD_DIR)/bin/$(TARGET)-ar
 LD=$(CROSS_BUILD_DIR)/bin/$(TARGET)-ld
+SZ=$(CROSS_BUILD_DIR)/bin/$(TARGET)-size
 OBJCOPY=$(CROSS_BUILD_DIR)/bin/$(TARGET)-objcopy
 OBJDUMP=$(CROSS_BUILD_DIR)/bin/$(TARGET)-objdump
 GCC_STAMP=$(CROSS_BUILD_DIR)/.gcc-built
@@ -31,12 +32,12 @@ C_OBJS   := $(patsubst kernel/%.c,$(KERNEL_BUILD_DIR)/%.o,$(filter kernel/%,$(C_
 ASM_OBJS := $(patsubst kernel/%.S,$(KERNEL_BUILD_DIR)/%.o,$(filter kernel/%,$(ASM_SRCS))) \
             $(patsubst lib/%.S,$(KERNEL_BUILD_DIR)/lib/%.o,$(filter lib/%,$(ASM_SRCS)))
 OBJS:=$(C_OBJS) $(ASM_OBJS)
-
-$(info $(OBJS))
-
 CINC=$(foreach dir,$(shell find kernel -type d),-I$(dir)) -Ilib/
 CFLAGS=-std=gnu99 -ffreestanding -mcmodel=large -mno-red-zone -mno-mmx -mno-sse -mno-sse2 -g -Wall -Wextra -nostdlib
 CDEFS=-D__x86_64__
+
+# Lib
+LIB_CFLAGS=-O3
 
 # Loader
 BOOT1_C_SRCS=$(wildcard loader/boot1/*.c) $(wildcard lib/*.c)
@@ -73,6 +74,9 @@ all: disk
 
 # Disk
 disk: $(BUILD_DIR)/disk.img
+	$(SZ) $(LOADER_BUILD_DIR)/boot0.o
+	$(SZ) $(LOADER_BUILD_DIR)/boot1.elf
+	$(SZ) $(KERNEL_BUILD_DIR)/kernel.elf
 
 $(BUILD_DIR)/disk.img: $(KERNEL_BUILD_DIR)/kernel.elf $(LOADER_BUILD_DIR)/boot0.bin $(LOADER_BUILD_DIR)/boot1.bin | $(LOADER_BUILD_DIR)
 	dd if=$(LOADER_BUILD_DIR)/boot0.bin of=$(BUILD_DIR)/disk.img bs=512 count=1
@@ -89,10 +93,10 @@ $(KERNEL_BUILD_DIR)/%.o: kernel/%.S $(GCC_STAMP) | $(KERNEL_BUILD_SUBDIRS)
 	$(CC) $(CFLAGS) $(CDEFS) $(CINC) -c $< -o $@
 
 $(KERNEL_BUILD_DIR)/lib/%.o: lib/%.c $(GCC_STAMP) | $(KERNEL_BUILD_SUBDIRS) 
-	$(CC) $(CFLAGS) $(CDEFS) $(CINC) -c $< -o $@
+	$(CC) $(CFLAGS) $(CDEFS) $(CINC) $(LIB_CFLAGS) -c $< -o $@
 
 $(KERNEL_BUILD_DIR)/lib/%.o: lib/%.S $(GCC_STAMP) | $(KERNEL_BUILD_SUBDIRS) 
-	$(CC) $(CFLAGS) $(CDEFS) $(CINC) -c $< -o $@
+	$(CC) $(CFLAGS) $(CDEFS) $(CINC) $(LIB_CFLAGS) -c $< -o $@
 
 $(KERNEL_BUILD_DIR)/kernel.elf: $(OBJS) $(GCC_STAMP) | $(KERNEL_BUILD_SUBDIRS)
 	$(CC) $(CFLAGS) $(CDEFS) $(CINC) -T kernel/linker.ld $(OBJS) -o $@ -lgcc
@@ -113,10 +117,10 @@ $(BOOT1_BUILD_DIR)/%.o: loader/boot1/%.S $(GCC_STAMP) | $(BOOT1_BUILD_SUBDIRS)
 	$(CC) $(BOOT1_CFLAGS) $(BOOT1_CINC) -m32 -g -c -o $@ $<
 
 $(BOOT1_BUILD_DIR)/lib/%.o: lib/%.c $(GCC_STAMP) | $(BOOT1_BUILD_SUBDIRS)
-	$(CC) $(BOOT1_CFLAGS) $(BOOT1_CINC) -m32 -c $< -o $@
+	$(CC) $(BOOT1_CFLAGS) $(BOOT1_CINC) $(LIB_CFLAGS) -m32 -c $< -o $@
 
 $(BOOT1_BUILD_DIR)/lib/%.o: lib/%.S $(GCC_STAMP) | $(BOOT1_BUILD_SUBDIRS)
-	$(CC) $(BOOT1_CFLAGS) $(BOOT1_CINC) -m32 -g -c -o $@ $<
+	$(CC) $(BOOT1_CFLAGS) $(BOOT1_CINC) $(LIB_CFLAGS) -m32 -g -c -o $@ $<
 
 $(LOADER_BUILD_DIR)/boot1.elf: $(BOOT1_OBJS) $(BINUTILS_STAMP) | $(LOADER_BUILD_DIR)
 	$(LD) $(BOOT1_CINC) -m elf_i386 -e _start -T loader/boot1/linker.ld -o $@ $(BOOT1_OBJS)
