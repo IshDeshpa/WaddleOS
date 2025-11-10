@@ -1,5 +1,5 @@
 BUILD_DIR=./build
-
+SHELL := /bin/bash
 DEBUG ?= 0
 
 CROSS_BUILD_DIR=$(BUILD_DIR)/cross
@@ -10,6 +10,7 @@ KERNEL_BUILD_SUBDIRS:=$(patsubst kernel%,$(KERNEL_BUILD_DIR)%,$(shell find kerne
 LOADER_BUILD_DIR=$(BUILD_DIR)/loader
 BOOT1_BUILD_DIR=$(LOADER_BUILD_DIR)/boot1
 BOOT1_BUILD_SUBDIRS=$(BOOT1_BUILD_DIR)/lib
+TEST_BUILD_DIR=$(BUILD_DIR)/test
 
 # Cross
 TARGET?=x86_64-elf
@@ -24,31 +25,86 @@ OBJDUMP=$(CROSS_BUILD_DIR)/bin/$(TARGET)-objdump
 GCC_STAMP=$(CROSS_BUILD_DIR)/.gcc-built
 BINUTILS_STAMP=$(CROSS_BUILD_DIR)/.binutils-built
 
+# CFLAGS
+KERNEL_OPT ?= 0
+LIB_OPT ?= 3
+TEST_OPT ?= 0
+BOOT_OPT ?= 0
+
+FREESTANDING_CFLAGS=-ffreestanding -nostdlib
+GENERIC_CFLAGS=-std=gnu99 -g -Wall -Wextra -D__x86_64__
+
 # Kernel
-C_SRCS   = $(wildcard kernel/*.c) $(wildcard kernel/**/*.c) $(wildcard lib/*.c)
-ASM_SRCS = $(wildcard kernel/*.S) $(wildcard kernel/**/*.S) $(wildcard lib/*.S)
-C_OBJS   := $(patsubst kernel/%.c,$(KERNEL_BUILD_DIR)/%.o,$(filter kernel/%,$(C_SRCS))) \
+KERNEL_C_SRCS   := $(wildcard kernel/*.c) $(wildcard kernel/**/*.c) $(wildcard lib/*.c)
+KERNEL_ASM_SRCS := $(wildcard kernel/*.S) $(wildcard kernel/**/*.S) $(wildcard lib/*.S)
+KERNEL_C_OBJS   := $(patsubst kernel/%.c,$(KERNEL_BUILD_DIR)/%.o,$(filter kernel/%,$(C_SRCS))) \
             $(patsubst lib/%.c,$(KERNEL_BUILD_DIR)/lib/%.o,$(filter lib/%,$(C_SRCS)))
-ASM_OBJS := $(patsubst kernel/%.S,$(KERNEL_BUILD_DIR)/%.o,$(filter kernel/%,$(ASM_SRCS))) \
+KERNEL_ASM_OBJS := $(patsubst kernel/%.S,$(KERNEL_BUILD_DIR)/%.o,$(filter kernel/%,$(ASM_SRCS))) \
             $(patsubst lib/%.S,$(KERNEL_BUILD_DIR)/lib/%.o,$(filter lib/%,$(ASM_SRCS)))
-OBJS:=$(C_OBJS) $(ASM_OBJS)
-CINC=$(foreach dir,$(shell find kernel -type d),-I$(dir)) -Ilib/
-CFLAGS=-std=gnu99 -ffreestanding -mcmodel=large -mno-red-zone -mno-mmx -mno-sse -mno-sse2 -g -Wall -Wextra -nostdlib
-CDEFS=-D__x86_64__
+KERNEL_OBJS:=$(C_OBJS) $(ASM_OBJS)
+KERNEL_C_INCS:=$(foreach dir,$(shell find kernel -type d),-I$(dir)) -Ilib/
+KERNEL_CFLAGS:=-O$(KERNEL_OPT) $(GENERIC_CFLAGS) $(FREESTANDING_CFLAGS) -mcmodel=large -mno-red-zone
 
 # Lib
-LIB_CFLAGS=-O3
+LIB_CFLAGS:=-O$(LIB_OPT) $(GENERIC_CFLAGS) $(FREESTANDING_CFLAGS)
 
-# Loader
-BOOT1_C_SRCS=$(wildcard loader/boot1/*.c) $(wildcard lib/*.c)
-BOOT1_ASM_SRCS=$(wildcard loader/boot1/*.S) $(wildcard lib/*.S)
+# Test
+HOST_CC=gcc
+HOST_OBJDUMP=objdump
+TESTS:=$(notdir $(shell find test/unit -mindepth 1 -maxdepth 1 -type d))
+TEST_ELFS:=$(foreach t,$(TESTS),$(TEST_BUILD_DIR)/$(t)/$(t).elf)
+TEST_CFLAGS:=-O$(TEST_OPT) $(GENERIC_CFLAGS)
+
+define GET_TEST_SRCS
+$(shell \
+    if [ -f test/unit/$(1)/test.cfg ]; then \
+        source test/unit/$(1)/test.cfg; \
+        for f in $$TEST_SRCS; do echo $$f; done; \
+    fi)
+endef
+
+define TEST_RULE
+$(1)_TEST_SRCS:=$$(call GET_TEST_SRCS,$(1)) 
+$(1)_TEST_FILES:=$$(wildcard test/unit/$(1)/*.c)
+$(1)_TEST_SRC_OBJS:=$$(patsubst %.c,$(TEST_BUILD_DIR)/%.o,$$($(1)_TEST_SRCS)) $(TEST_BUILD_DIR)/$(1)/test_main.o
+$(1)_TEST_FILE_OBJS:=$$(patsubst test/unit/$(1)/%.c,$(TEST_BUILD_DIR)/$(1)/%.o,$$($(1)_TEST_FILES))
+$(1)_TEST_C_INCS=-Itest/ -I$(TEST_BUILD_DIR)/$(1)/gen/
+
+.PHONY: test-$(1)
+test-$(1): $(TEST_BUILD_DIR)/$(1)/$(1).elf
+
+$(TEST_BUILD_DIR)/$(1)/$(1).elf: $$($(1)_TEST_FILE_OBJS) $$($(1)_TEST_SRC_OBJS)
+	@mkdir -p $$(@D)
+	$$(HOST_CC) $$(TEST_CFLAGS) $$(KERNEL_C_INCS) $$($(1)_TEST_C_INCS) -o $$@ $$($(1)_TEST_SRC_OBJS) $$($(1)_TEST_FILE_OBJS)
+
+$(TEST_BUILD_DIR)/$(1)/%.o: test/unit/$(1)/%.c 
+	@mkdir -p $$(@D)
+	$$(HOST_CC) $$(TEST_CFLAGS) $$(KERNEL_C_INCS) $$($(1)_TEST_C_INCS) -c $$< -o $$@
+
+$(TEST_BUILD_DIR)/$(1)/test_main.o: test/unit/test_main.c $(TEST_BUILD_DIR)/$(1)/gen/test_defs.h
+	@mkdir -p $$(@D)
+	$$(HOST_CC) $$(TEST_CFLAGS) $$(KERNEL_C_INCS) $$($(1)_TEST_C_INCS) $$(TEST_DEFS) -c $$< -o $$@
+
+$(TEST_BUILD_DIR)/$(1)/gen/test_defs.h:
+	@mkdir -p $$(@D)
+	@echo -n "#define TEST_LIST " > $$@
+	$$(HOST_OBJDUMP) -t $$($(1)_TEST_FILE_OBJS) \
+  | grep -o "waddletest.*" \
+  | sed 's/.*/X(&)/' \
+  | tr '\n' ' ' >> $$@
+
+endef
+
+# Bootloader
+BOOT1_C_SRCS := $(wildcard loader/boot1/*.c) $(wildcard lib/*.c)
+BOOT1_ASM_SRCS := $(wildcard loader/boot1/*.S) $(wildcard lib/*.S)
 BOOT1_C_OBJS   := $(patsubst loader/boot1/%.c,$(BOOT1_BUILD_DIR)/%.o,$(filter loader/boot1/%,$(BOOT1_C_SRCS))) \
             $(patsubst lib/%.c,$(BOOT1_BUILD_DIR)/lib/%.o,$(filter lib/%,$(BOOT1_C_SRCS)))
 BOOT1_ASM_OBJS := $(patsubst loader/boot1/%.S,$(BOOT1_BUILD_DIR)/%.o,$(filter loader/boot1/%,$(BOOT1_ASM_SRCS))) \
             $(patsubst lib/%.S,$(BOOT1_BUILD_DIR)/lib/%.o,$(filter lib/%,$(BOOT1_ASM_SRCS)))
 BOOT1_OBJS:=$(BOOT1_C_OBJS) $(BOOT1_ASM_OBJS)
-BOOT1_CINC=-Iloader/boot1/ -Ilib/
-BOOT1_CFLAGS=-std=gnu99 -ffreestanding -m32 -mno-red-zone -mno-mmx -mno-sse -mno-sse2 -g -Wall -Wextra -nostdlib -Oz
+BOOT1_C_INCS=-Iloader/boot1/ -Ilib/
+BOOT1_CFLAGS=-O$(BOOT_OPT) $(GENERIC_CFLAGS) $(FREESTANDING_CFLAGS) -m32
 
 # QEMU
 QEMU_FLAGS=-cpu qemu64
@@ -62,7 +118,8 @@ else
 endif
 
 ifeq ($(DEBUG),1)
-CDEFS        += -DDEBUG
+KERNEL_CFLAGS += -DDEBUG
+LIB_CFLAGS += -DDEBUG
 BOOT1_CFLAGS += -DDEBUG
 endif
 
@@ -78,60 +135,90 @@ disk: $(BUILD_DIR)/disk.img
 	$(SZ) $(LOADER_BUILD_DIR)/boot1.elf
 	$(SZ) $(KERNEL_BUILD_DIR)/kernel.elf
 
-$(BUILD_DIR)/disk.img: $(KERNEL_BUILD_DIR)/kernel.elf $(LOADER_BUILD_DIR)/boot0.bin $(LOADER_BUILD_DIR)/boot1.bin | $(LOADER_BUILD_DIR)
+$(BUILD_DIR)/disk.img: $(KERNEL_BUILD_DIR)/kernel.elf $(LOADER_BUILD_DIR)/boot0.bin $(LOADER_BUILD_DIR)/boot1.bin
 	dd if=$(LOADER_BUILD_DIR)/boot0.bin of=$(BUILD_DIR)/disk.img bs=512 count=1
 	dd if=$(LOADER_BUILD_DIR)/boot1.bin of=$(BUILD_DIR)/disk.img bs=512 seek=5
 	dd if=$(KERNEL_BUILD_DIR)/kernel.elf of=$(BUILD_DIR)/disk.img bs=512 seek=12
 
 # Kernel
-kernel: $(KERNEL_BUILD_DIR)/kernel.elf | $(KERNEL_BUILD_DIR)
+kernel: $(KERNEL_BUILD_DIR)/kernel.elf
 
-$(KERNEL_BUILD_DIR)/%.o: kernel/%.c $(GCC_STAMP) | $(KERNEL_BUILD_SUBDIRS) 
-	$(CC) $(CFLAGS) $(CDEFS) $(CINC) -c $< -o $@
+$(KERNEL_BUILD_DIR)/%.o: kernel/%.c $(GCC_STAMP)
+	@mkdir -p $(@D)
+	$(CC) $(KERNEL_CFLAGS) $(KERNEL_C_INCS) -c $< -o $@
 
-$(KERNEL_BUILD_DIR)/%.o: kernel/%.S $(GCC_STAMP) | $(KERNEL_BUILD_SUBDIRS) 
-	$(CC) $(CFLAGS) $(CDEFS) $(CINC) -c $< -o $@
+$(KERNEL_BUILD_DIR)/%.o: kernel/%.S $(GCC_STAMP)
+	@mkdir -p $(@D)
+	$(CC) $(KERNEL_CFLAGS) $(KERNEL_C_INCS) -c $< -o $@
 
-$(KERNEL_BUILD_DIR)/lib/%.o: lib/%.c $(GCC_STAMP) | $(KERNEL_BUILD_SUBDIRS) 
-	$(CC) $(CFLAGS) $(CDEFS) $(CINC) $(LIB_CFLAGS) -c $< -o $@
+$(KERNEL_BUILD_DIR)/lib/%.o: lib/%.c $(GCC_STAMP)
+	@mkdir -p $(@D)
+	$(CC) $(LIB_CFLAGS) $(KERNEL_C_INCS) -c $< -o $@
 
-$(KERNEL_BUILD_DIR)/lib/%.o: lib/%.S $(GCC_STAMP) | $(KERNEL_BUILD_SUBDIRS) 
-	$(CC) $(CFLAGS) $(CDEFS) $(CINC) $(LIB_CFLAGS) -c $< -o $@
+$(KERNEL_BUILD_DIR)/lib/%.o: lib/%.S $(GCC_STAMP)
+	@mkdir -p $(@D)
+	$(CC) $(LIB_CFLAGS) $(KERNEL_C_INCS) -c $< -o $@
 
-$(KERNEL_BUILD_DIR)/kernel.elf: $(OBJS) $(GCC_STAMP) | $(KERNEL_BUILD_SUBDIRS)
-	$(CC) $(CFLAGS) $(CDEFS) $(CINC) -T kernel/linker.ld $(OBJS) -o $@ -lgcc
+$(KERNEL_BUILD_DIR)/kernel.elf: $(KERNEL_OBJS) $(GCC_STAMP)
+	@mkdir -p $(@D)
+	$(CC) $(KERNEL_CFLAGS) $(KERNEL_C_INCS) -T kernel/linker.ld $(KERNEL_OBJS) -o $@ -lgcc
 
 # Bootloader
-loader: $(LOADER_BUILD_DIR)/boot0.bin $(LOADER_BUILD_DIR)/boot1.bin | $(LOADER_BUILD_DIR)
+loader: $(LOADER_BUILD_DIR)/boot0.bin $(LOADER_BUILD_DIR)/boot1.bin
 
-$(LOADER_BUILD_DIR)/boot0.bin: $(LOADER_BUILD_DIR)/boot0.o $(BINUTILS_STAMP) | $(LOADER_BUILD_DIR)
+$(LOADER_BUILD_DIR)/boot0.bin: $(LOADER_BUILD_DIR)/boot0.o $(BINUTILS_STAMP)
+	@mkdir -p $(@D)
 	$(LD) -m elf_i386 -e _start -Ttext 0x7C00 --oformat binary -o $@ $<
 
-$(LOADER_BUILD_DIR)/boot0.o: loader/boot0.S $(BINUTILS_STAMP) | $(LOADER_BUILD_DIR)
+$(LOADER_BUILD_DIR)/boot0.o: loader/boot0.S $(BINUTILS_STAMP)
+	@mkdir -p $(@D)
 	$(AS) --32 -g -o $@ $<
 
-$(BOOT1_BUILD_DIR)/%.o: loader/boot1/%.c $(GCC_STAMP) | $(BOOT1_BUILD_SUBDIRS)
-	$(CC) $(BOOT1_CFLAGS) $(BOOT1_CINC) -m32 -c $< -o $@
+$(BOOT1_BUILD_DIR)/%.o: loader/boot1/%.c $(GCC_STAMP)
+	@mkdir -p $(@D)
+	$(CC) $(BOOT1_CFLAGS) $(BOOT1_C_INCS) -c $< -o $@
 
-$(BOOT1_BUILD_DIR)/%.o: loader/boot1/%.S $(GCC_STAMP) | $(BOOT1_BUILD_SUBDIRS)
-	$(CC) $(BOOT1_CFLAGS) $(BOOT1_CINC) -m32 -g -c -o $@ $<
+$(BOOT1_BUILD_DIR)/%.o: loader/boot1/%.S $(GCC_STAMP)
+	@mkdir -p $(@D)
+	$(CC) $(BOOT1_CFLAGS) $(BOOT1_C_INCS) -c $< -o $@
+	
+$(BOOT1_BUILD_DIR)/lib/%.o: lib/%.c $(GCC_STAMP)
+	@mkdir -p $(@D)
+	$(CC) $(LIB_CFLAGS) $(BOOT1_C_INCS) -m32 -c $< -o $@
 
-$(BOOT1_BUILD_DIR)/lib/%.o: lib/%.c $(GCC_STAMP) | $(BOOT1_BUILD_SUBDIRS)
-	$(CC) $(BOOT1_CFLAGS) $(BOOT1_CINC) $(LIB_CFLAGS) -m32 -c $< -o $@
+$(BOOT1_BUILD_DIR)/lib/%.o: lib/%.S $(GCC_STAMP)
+	@mkdir -p $(@D)
+	$(CC) $(LIB_CFLAGS) $(BOOT1_C_INCS) -m32 -c $< -o $@
 
-$(BOOT1_BUILD_DIR)/lib/%.o: lib/%.S $(GCC_STAMP) | $(BOOT1_BUILD_SUBDIRS)
-	$(CC) $(BOOT1_CFLAGS) $(BOOT1_CINC) $(LIB_CFLAGS) -m32 -g -c -o $@ $<
+$(LOADER_BUILD_DIR)/boot1.elf: $(BOOT1_OBJS) $(BINUTILS_STAMP)
+	@mkdir -p $(@D)
+	$(LD) $(BOOT1_C_INCS) -m elf_i386 -e _start -T loader/boot1/linker.ld -o $@ $(BOOT1_OBJS)
 
-$(LOADER_BUILD_DIR)/boot1.elf: $(BOOT1_OBJS) $(BINUTILS_STAMP) | $(LOADER_BUILD_DIR)
-	$(LD) $(BOOT1_CINC) -m elf_i386 -e _start -T loader/boot1/linker.ld -o $@ $(BOOT1_OBJS)
-
-$(LOADER_BUILD_DIR)/boot1.bin: $(LOADER_BUILD_DIR)/boot1.elf $(BOOT1_OBJS) $(BINUTILS_STAMP) | $(LOADER_BUILD_DIR)
+$(LOADER_BUILD_DIR)/boot1.bin: $(LOADER_BUILD_DIR)/boot1.elf $(BOOT1_OBJS) $(BINUTILS_STAMP)
+	@mkdir -p $(@D)
 	$(OBJCOPY) -O binary --set-section-flags .rmode=alloc,load,contents  --strip-all $< $@
+
+# Test
+test: $(TEST_ELFS)
+	@for t in $(TEST_ELFS); do \
+		$$t || exit $$?; \
+	done
+
+$(foreach t,$(TESTS),$(eval $(call TEST_RULE,$(t))))
+
+$(TEST_BUILD_DIR)/kernel/%.o: kernel/%.c
+	@mkdir -p $(@D)
+	$(HOST_CC) $(KERNEL_CFLAGS) $(KERNEL_C_INCS) -c $< -o $@
+
+$(TEST_BUILD_DIR)/kernel/lib/%.o: lib/%.c
+	@mkdir -p $(@D)
+	$(HOST_CC) $(KERNEL_CFLAGS) $(LIB_CFLAGS) $(KERNEL_C_INCS) -c $< -o $@
 
 # Cross
 cross: $(GCC_STAMP) $(BINUTILS_STAMP) 
 
-$(GCC_STAMP): $(GCC_BUILD_DIR) $(BINUTILS_STAMP)
+$(GCC_STAMP): $(BINUTILS_STAMP)
+	@mkdir -p $(@D)
 	export PATH="$(PREFIX)/bin:$$PATH" && \
 	pushd gcc && \
 	./contrib/download_prerequisites && \
@@ -147,7 +234,8 @@ $(GCC_STAMP): $(GCC_BUILD_DIR) $(BINUTILS_STAMP)
 	make -j8 -C $(GCC_BUILD_DIR) install-target-libstdc++-v3 && \
 	touch $@
 
-$(BINUTILS_STAMP): $(BINUTILS_BUILD_DIR)
+$(BINUTILS_STAMP): 
+	@mkdir -p $(@D)
 	export PATH="$(PREFIX)/bin:$$PATH" && \
 	pushd $(BINUTILS_BUILD_DIR) && \
 		../../binutils-gdb/configure --target="$(TARGET)" --prefix="$(PREFIX)" --with-sysroot --disable-nls --disable-werror --enable-multilib --enable-targets=all && \
@@ -155,10 +243,6 @@ $(BINUTILS_STAMP): $(BINUTILS_BUILD_DIR)
 	make -j8 -C $(BINUTILS_BUILD_DIR) && \
 	make -j8 -C $(BINUTILS_BUILD_DIR) install && \
 	touch $@
-
-# Build dirs
-$(BUILD_DIR) $(KERNEL_BUILD_SUBDIRS) $(GCC_BUILD_DIR) $(BINUTILS_BUILD_DIR) $(LOADER_BUILD_DIR) $(BOOT1_BUILD_DIR) $(BOOT1_BUILD_SUBDIRS):
-	mkdir -p $@
 
 run:
 	qemu-system-$(QEMU_VER) $(QEMU_FLAGS) -drive format=raw,file=build/disk.img -serial $(QEMU_SERIAL_OUT)
@@ -175,16 +259,19 @@ mon:
 trace:
 	qemu-system-$(QEMU_VER) $(QEMU_FLAGS) -drive format=raw,file=build/disk.img -serial $(QEMU_SERIAL_OUT) -d int,cpu_reset -D qemu.log -no-reboot
 
-dump0: $(LOADER_BUILD_DIR)/boot0.o $(BINUTILS_STAMP)
+dump-boot0: $(LOADER_BUILD_DIR)/boot0.o $(BINUTILS_STAMP)
 	$(OBJDUMP) -d $< -m i8086
 
-dump1: $(LOADER_BUILD_DIR)/boot1.elf $(BINUTILS_STAMP)
+dump-boot1: $(LOADER_BUILD_DIR)/boot1.elf $(BINUTILS_STAMP)
+	$(OBJDUMP) -d $< -m i8086
+
+dump-kernel: $(KERNEL_BUILD_DIR)/kernel.elf $(BINUTILS_STAMP)
 	$(OBJDUMP) -d $< -m i8086
 
 clean:
-	-rm -rf $(KERNEL_BUILD_DIR) $(LOADER_BUILD_DIR) $(LIB_BUILD_DIR)
+	-rm -rf $(KERNEL_BUILD_DIR) $(LOADER_BUILD_DIR) $(LIB_BUILD_DIR) $(TEST_BUILD_DIR)
 
 clean-cross:
 	-rm -rf $(CROSS_BUILD_DIR) $(GCC_BUILD_DIR) $(BINUTILS_BUILD_DIR)
 
-.PHONY: all clean run cross kernel gcc binutils loader dump0 dump1 disk mon debug clean-cross gdb lib
+.PHONY: all clean run cross kernel gcc binutils loader dump-boot0 dump-boot1 dump-kernel disk mon debug clean-cross gdb lib $(TESTS) test
