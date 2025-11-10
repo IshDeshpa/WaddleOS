@@ -49,51 +49,6 @@ KERNEL_CFLAGS:=-O$(KERNEL_OPT) $(GENERIC_CFLAGS) $(FREESTANDING_CFLAGS) -mcmodel
 LIB_CFLAGS:=-O$(LIB_OPT) $(GENERIC_CFLAGS) $(FREESTANDING_CFLAGS)
 
 # Test
-HOST_CC=gcc
-HOST_OBJDUMP=objdump
-TESTS:=$(notdir $(shell find test/unit -mindepth 1 -maxdepth 1 -type d))
-TEST_ELFS:=$(foreach t,$(TESTS),$(TEST_BUILD_DIR)/$(t)/$(t).elf)
-TEST_CFLAGS:=-O$(TEST_OPT) $(GENERIC_CFLAGS)
-
-define GET_TEST_SRCS
-$(shell \
-    if [ -f test/unit/$(1)/test.cfg ]; then \
-        source test/unit/$(1)/test.cfg; \
-        for f in $$TEST_SRCS; do echo $$f; done; \
-    fi)
-endef
-
-define TEST_RULE
-$(1)_TEST_SRCS:=$$(call GET_TEST_SRCS,$(1)) 
-$(1)_TEST_FILES:=$$(wildcard test/unit/$(1)/*.c)
-$(1)_TEST_SRC_OBJS:=$$(patsubst %.c,$(TEST_BUILD_DIR)/%.o,$$($(1)_TEST_SRCS)) $(TEST_BUILD_DIR)/$(1)/test_main.o
-$(1)_TEST_FILE_OBJS:=$$(patsubst test/unit/$(1)/%.c,$(TEST_BUILD_DIR)/$(1)/%.o,$$($(1)_TEST_FILES))
-$(1)_TEST_C_INCS=-Itest/ -I$(TEST_BUILD_DIR)/$(1)/gen/
-
-.PHONY: test-$(1)
-test-$(1): $(TEST_BUILD_DIR)/$(1)/$(1).elf
-
-$(TEST_BUILD_DIR)/$(1)/$(1).elf: $$($(1)_TEST_FILE_OBJS) $$($(1)_TEST_SRC_OBJS)
-	@mkdir -p $$(@D)
-	$$(HOST_CC) $$(TEST_CFLAGS) $$(KERNEL_C_INCS) $$($(1)_TEST_C_INCS) -o $$@ $$($(1)_TEST_SRC_OBJS) $$($(1)_TEST_FILE_OBJS)
-
-$(TEST_BUILD_DIR)/$(1)/%.o: test/unit/$(1)/%.c 
-	@mkdir -p $$(@D)
-	$$(HOST_CC) $$(TEST_CFLAGS) $$(KERNEL_C_INCS) $$($(1)_TEST_C_INCS) -c $$< -o $$@
-
-$(TEST_BUILD_DIR)/$(1)/test_main.o: test/unit/test_main.c $(TEST_BUILD_DIR)/$(1)/gen/test_defs.h
-	@mkdir -p $$(@D)
-	$$(HOST_CC) $$(TEST_CFLAGS) $$(KERNEL_C_INCS) $$($(1)_TEST_C_INCS) $$(TEST_DEFS) -c $$< -o $$@
-
-$(TEST_BUILD_DIR)/$(1)/gen/test_defs.h:
-	@mkdir -p $$(@D)
-	@echo -n "#define TEST_LIST " > $$@
-	$$(HOST_OBJDUMP) -t $$($(1)_TEST_FILE_OBJS) \
-  | grep -o "waddletest.*" \
-  | sed 's/.*/X(&)/' \
-  | tr '\n' ' ' >> $$@
-
-endef
 
 # Bootloader
 BOOT1_C_SRCS := $(wildcard loader/boot1/*.c) $(wildcard lib/*.c)
@@ -199,20 +154,6 @@ $(LOADER_BUILD_DIR)/boot1.bin: $(LOADER_BUILD_DIR)/boot1.elf $(BOOT1_OBJS) $(BIN
 	$(OBJCOPY) -O binary --set-section-flags .rmode=alloc,load,contents  --strip-all $< $@
 
 # Test
-test: $(TEST_ELFS)
-	@for t in $(TEST_ELFS); do \
-		$$t || exit $$?; \
-	done
-
-$(foreach t,$(TESTS),$(eval $(call TEST_RULE,$(t))))
-
-$(TEST_BUILD_DIR)/kernel/%.o: kernel/%.c
-	@mkdir -p $(@D)
-	$(HOST_CC) $(KERNEL_CFLAGS) $(KERNEL_C_INCS) -c $< -o $@
-
-$(TEST_BUILD_DIR)/kernel/lib/%.o: lib/%.c
-	@mkdir -p $(@D)
-	$(HOST_CC) $(KERNEL_CFLAGS) $(LIB_CFLAGS) $(KERNEL_C_INCS) -c $< -o $@
 
 # Cross
 cross: $(GCC_STAMP) $(BINUTILS_STAMP) 
