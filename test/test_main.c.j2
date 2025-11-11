@@ -1,0 +1,52 @@
+// Jinja template for test runner
+#include <stdio.h>
+#include "waddletest.h"
+
+{{all_test_protos}}
+
+typedef struct {
+  char *name;
+  const test_t *suite;
+  int count;
+} test_suite_t;
+
+{{all_test_suite_arrs}}
+
+static const test_suite_t test_suites[{{num_test_suites}}] = { {{all_test_suite_structs}} };
+
+int run_test_suite(test_suite_t *t){
+  int num_successes = 0;
+  for(int i=0; i<t->count; i++){
+    printf(BLUE "===============\n\r%s TEST\n\r===============\n\r" NOCOLOR, t->suite[i].test_name);
+    
+    t->suite[i].setup_func();
+    bool ret = t->suite[i].test_func();
+    if(ret){
+      printf(GREEN "[PASS] %s " BLUE "TEST\n\r" NOCOLOR, t->suite[i].test_name);     
+      num_successes++;
+    } else{
+      printf(RED "[FAIL] %s " BLUE "TEST\n\r" NOCOLOR, t->suite[i].test_name);     
+    }
+  }
+
+  return num_successes;
+
+}
+
+int main(){
+  for(int i=0; i<{{num_test_suites}}; i++){
+    test_suite_t t = test_suites[i];
+
+    printf(MAGENTA "===============\n\r%s SUITE\n\r===============\n\r" NOCOLOR, t.name);
+    
+    int num_successes = run_test_suite(&test_suites[i]);
+
+    if(num_successes == t.count){
+      printf(GREEN "[PASS] %d/%d %s " MAGENTA "SUITE\n\r" NOCOLOR, num_successes, t.count, t.name);
+      return 0;
+    } else {
+      printf(RED "[FAIL] %d/%d %s " MAGENTA "SUITE\n\r" NOCOLOR, num_successes, t.count, t.name);
+      return -1;
+    }
+  }
+}

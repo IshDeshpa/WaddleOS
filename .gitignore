@@ -1,7 +1,10 @@
 .cache
+.venv
 build
 binutils-gdb
 gcc
 blog
 compile_commands.json
+.python-version
+uv.lock
 *.log

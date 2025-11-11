@@ -26,10 +26,10 @@ GCC_STAMP=$(CROSS_BUILD_DIR)/.gcc-built
 BINUTILS_STAMP=$(CROSS_BUILD_DIR)/.binutils-built
 
 # CFLAGS
-KERNEL_OPT ?= 0
+KERNEL_OPT ?= z
 LIB_OPT ?= 3
-TEST_OPT ?= 0
-BOOT_OPT ?= 0
+TEST_OPT ?= z
+BOOT_OPT ?= z
 
 FREESTANDING_CFLAGS=-ffreestanding -nostdlib
 GENERIC_CFLAGS=-std=gnu99 -g -Wall -Wextra -D__x86_64__
@@ -49,6 +49,28 @@ KERNEL_CFLAGS:=-O$(KERNEL_OPT) $(GENERIC_CFLAGS) $(FREESTANDING_CFLAGS) -mcmodel
 LIB_CFLAGS:=-O$(LIB_OPT) $(GENERIC_CFLAGS) $(FREESTANDING_CFLAGS)
 
 # Test
+HOST_CC=gcc
+ALL_TEST_DIRS:=$(shell find test/ -mindepth 1 -maxdepth 1 -type d)
+ALL_TESTS:=$(notdir $(ALL_TEST_DIRS))
+
+TESTS?=$(ALL_TESTS)
+VALID_TESTS:=$(filter $(ALL_TESTS),$(TESTS))
+VALID_TEST_DIRS:=$(addprefix test/,$(VALID_TESTS))
+VALID_TEST_FILES:=$(foreach d,$(VALID_TEST_DIRS),$(wildcard $(d)/*.c))
+
+TEST_CFLAGS:=-O$(TEST_OPT) $(GENERIC_CFLAGS)
+TEST_C_INCS:=$(KERNEL_C_INCS) -Itest/
+
+define GET_TEST_SRCS
+$(shell \
+    if [ -f $(1)/test.cfg ]; then \
+        source $(1)/test.cfg; \
+        for f in $$TEST_SRCS; do echo $$f; done; \
+    fi)
+endef
+
+VALID_TEST_SRCS:=$(foreach d,$(VALID_TEST_DIRS),$(call GET_TEST_SRCS,$d))
+TEST_ELF_NAME:=$(subst $(space),_,$(VALID_TESTS))
 
 # Bootloader
 BOOT1_C_SRCS := $(wildcard loader/boot1/*.c) $(wildcard lib/*.c)
@@ -154,6 +176,31 @@ $(LOADER_BUILD_DIR)/boot1.bin: $(LOADER_BUILD_DIR)/boot1.elf $(BOOT1_OBJS) $(BIN
 	$(OBJCOPY) -O binary --set-section-flags .rmode=alloc,load,contents  --strip-all $< $@
 
 # Test
+test: $(TEST_BUILD_DIR)/$(TEST_ELF_NAME).elf
+	@./$(TEST_BUILD_DIR)/$(TEST_ELF_NAME).elf 
+
+$(TEST_BUILD_DIR)/$(TEST_ELF_NAME).elf: $(TEST_BUILD_DIR)/gen/test_main.c $(VALID_TEST_SRCS)
+	@mkdir -p $(@D)
+	$(HOST_CC) $(TEST_CFLAGS) $(TEST_C_INCS) $(VALID_TEST_FILES) $(VALID_TEST_SRCS) $< -o $@
+
+$(TEST_BUILD_DIR)/gen/test_main.c: $(VALID_TEST_FILES) test/test_main.c.j2
+	@mkdir -p $(@D)
+	@tmp_file=$@.tmp; \
+	python3 test/test_gen.py --cflags '$(TEST_CFLAGS) $(TEST_C_INCS)' --test_sources $(VALID_TEST_FILES) > $$tmp_file; \
+	if [ -s $$tmp_file ]; then \
+	    mv $$tmp_file $@; \
+	else \
+	    rm -f $$tmp_file; \
+	fi
+
+# For building the proper source files for unit testing
+$(TEST_BUILD_DIR)/kernel/%.o: kernel/%.c
+	@mkdir -p $(@D)
+	$(HOST_CC) $(KERNEL_CFLAGS) $(KERNEL_C_INCS) -c $< -o $@
+
+$(TEST_BUILD_DIR)/kernel/lib/%.o: lib/%.c
+	@mkdir -p $(@D)
+	$(HOST_CC) $(KERNEL_CFLAGS) $(LIB_CFLAGS) $(KERNEL_C_INCS) -c $< -o $@
 
 # Cross
 cross: $(GCC_STAMP) $(BINUTILS_STAMP) 

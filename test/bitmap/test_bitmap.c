@@ -5,7 +5,7 @@
 uint8_t buf[20];
 bitmap_t bmp;
 
-void setup(){
+void setup_bitmap(){
   // Setup
   for(int i=0; i<sizeof(buf)/sizeof(uint8_t); i++){
     buf[i] = 0xFF;
@@ -14,10 +14,10 @@ void setup(){
   bitmap_init_buf(&bmp, buf, BMP_SIZE);
 }
 
-bool waddletest_bitmap_init_buf(){
-  // None of the bits should have changed
+bool test_bitmap_init_buf(){
+  // bitmap_init_buf initializes to 0
   for(int i=0; i<sizeof(buf)/sizeof(uint8_t); i++){
-    TEST_ASSERT_EQUAL(buf[i], 0xFF);
+    TEST_ASSERT_EQUAL(buf[i], 0x0);
   }
 
   // Buf should be buf
@@ -29,7 +29,7 @@ bool waddletest_bitmap_init_buf(){
   return true;
 }
 
-bool waddletest_bitmap_set(){
+bool test_bitmap_set(){
   for(int ind=0; ind<BMP_SIZE; ind++){
     // Bounds check
     int ind = 0;
@@ -44,7 +44,7 @@ bool waddletest_bitmap_set(){
   return true;
 }
 
-bool waddletest_bitmap_get(){
+bool test_bitmap_get(){
   // Alternating bits
   for(int i=0; i<sizeof(buf)/sizeof(uint8_t); i++){
     buf[i] = 0xAA;
