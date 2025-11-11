@@ -1,13 +1,13 @@
 #include "bitmap.h"
 #include "waddletest.h"
 
-#define BMP_SIZE 160
+#define BMP_SIZE ((long)160)
 uint8_t buf[20];
 bitmap_t bmp;
 
 void setup_bitmap(){
   // Setup
-  for(int i=0; i<sizeof(buf)/sizeof(uint8_t); i++){
+  for(int i=0; i<(int)(sizeof(buf)/sizeof(uint8_t)); i++){
     buf[i] = 0xFF;
   }
   
@@ -16,15 +16,15 @@ void setup_bitmap(){
 
 bool test_bitmap_init_buf(){
   // bitmap_init_buf initializes to 0
-  for(int i=0; i<sizeof(buf)/sizeof(uint8_t); i++){
-    TEST_ASSERT_EQUAL(buf[i], 0x0);
+  for(int i=0; i<(int)(sizeof(buf)/sizeof(uint8_t)); i++){
+    TEST_ASSERT_EQUAL_INT(buf[i], 0x0);
   }
 
   // Buf should be buf
-  TEST_ASSERT_EQUAL(bmp.buf, buf);
+  TEST_ASSERT_EQUAL_PTR(bmp.buf, buf);
 
   // Size should be correct
-  TEST_ASSERT_EQUAL(bmp.size, BMP_SIZE);
+  TEST_ASSERT_EQUAL_SIZE(bmp.size, BMP_SIZE);
 
   return true;
 }
@@ -38,7 +38,7 @@ bool test_bitmap_set(){
     uint8_t prev = buf[wordind];
 
     bitmap_set(&bmp, ind, false);
-    TEST_ASSERT_EQUAL(buf[wordind], prev & ~(1 << bitind));
+    TEST_ASSERT_EQUAL_INT(buf[wordind], prev & ~(1 << bitind));
   }
 
   return true;
@@ -46,15 +46,52 @@ bool test_bitmap_set(){
 
 bool test_bitmap_get(){
   // Alternating bits
-  for(int i=0; i<sizeof(buf)/sizeof(uint8_t); i++){
+  for(int i=0; i<(int)(sizeof(buf)/sizeof(uint8_t)); i++){
     buf[i] = 0xAA;
   }
 
   for(int ind=0; ind<BMP_SIZE; ind++){
-    TEST_ASSERT_EQUAL(bitmap_get(&bmp, ind), (bool)(ind%2));
+    TEST_ASSERT_EQUAL_INT(bitmap_get(&bmp, ind), (bool)(ind%2));
   }
 
   return true;
 }
 
+bool test_bitmap_flip(){
+  for (int i = 0; i < (int)(sizeof(buf) / sizeof(uint8_t)); i++) {
+    buf[i] = 0xAA;
+  }
 
+  // Flip entire bitmap
+  bitmap_flip(&bmp, 0, BMP_SIZE);
+  for (int i = 0; i < (int)(sizeof(buf) / sizeof(uint8_t)); i++) {
+    TEST_ASSERT_EQUAL_INT(buf[i], (uint8_t)~0x55);
+  }
+
+  // Flip entire bitmap (again)
+  bitmap_flip(&bmp, 0, BMP_SIZE);
+  for (int i = 0; i < (int)(sizeof(buf) / sizeof(uint8_t)); i++) {
+    TEST_ASSERT_EQUAL_INT(buf[i], (uint8_t)~0xAA);
+  }
+
+  // Flip 8 bits starting at bit 0
+  bitmap_flip(&bmp, 0, 8);
+
+  // Expect first byte to have flipped bits: 0b01010101 = 0x55
+  TEST_ASSERT_EQUAL_INT(buf[0], 0x55);
+
+  // Other bytes should remain unchanged
+  for (int i = 1; i < (int)(sizeof(buf) / sizeof(uint8_t)); i++) {
+    TEST_ASSERT_EQUAL_INT(buf[i], 0xAA);
+  }
+
+  // Flip bits 4–11 (crosses byte boundary)
+  bitmap_flip(&bmp, 4, 8);
+  // Byte 0: bits 4–7 flipped → 0x55 -> bits 4–7 flip -> 0xA5
+  TEST_ASSERT_EQUAL_INT(buf[0], 0xA5);
+  // Byte 1: bits 0–3 flipped from 0xAA -> 0xA5
+  TEST_ASSERT_EQUAL_INT(buf[1], 0xA5);
+
+
+  return true;
+}

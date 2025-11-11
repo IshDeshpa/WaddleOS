@@ -69,7 +69,7 @@ uint64_t bitmap_test(bitmap_t *bmp, bool value, uint64_t start_idx, size_t num_b
   uint64_t num_bits_curr = num_bits;
   uint64_t candidate_idx = -1ULL;
 
-  for (uint64_t word_idx = start_idx>>6 + 1; word_idx < end_word && num_bits_curr > 0; word_idx++){
+  for (uint64_t word_idx = (start_idx>>6) + 1; word_idx < end_word && num_bits_curr > 0; word_idx++){
     uint64_t val = bmp_arr[word_idx];
     uint64_t norm_val = val ^ (value ? 0ULL : ~0ULL);
 

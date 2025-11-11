@@ -186,7 +186,7 @@ $(TEST_BUILD_DIR)/$(TEST_ELF_NAME).elf: $(TEST_BUILD_DIR)/gen/test_main.c $(VALI
 $(TEST_BUILD_DIR)/gen/test_main.c: $(VALID_TEST_FILES) test/test_main.c.j2
 	@mkdir -p $(@D)
 	@tmp_file=$@.tmp; \
-	python3 test/test_gen.py --cflags '$(TEST_CFLAGS) $(TEST_C_INCS)' --test_sources $(VALID_TEST_FILES) > $$tmp_file; \
+	uv run python3 test/test_gen.py --cflags '$(TEST_CFLAGS) $(TEST_C_INCS)' --test_sources $(VALID_TEST_FILES) > $$tmp_file; \
 	if [ -s $$tmp_file ]; then \
 	    mv $$tmp_file $@; \
 	else \

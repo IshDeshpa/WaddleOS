@@ -10,30 +10,28 @@
 #define MAGENTA  "\033[0;35m"
 #define NOCOLOR "\033[0m"
 
-#ifdef TEST_VERBOSE_ASSERTIONS
-#define TEST_ASSERT(x) \
-    do { \
-        if (x) { \
-            printf(GREEN "[PASS] " NOCOLOR "%s: %s:%d: ASSERTION %s\n", \
-                   __func__, __FILE__, __LINE__, #x); \
-        } else { \
-            printf(RED "[FAIL] " NOCOLOR "%s: %s:%d: ASSERTION %s\n", \
-                   __func__, __FILE__, __LINE__, #x); \
-            return false; \
-        } \
-    } while(0)
+#ifdef TEST_VERBOSE
+#define TEST_VERBOSE 1
 #else
-#define TEST_ASSERT(x) \
-    do { \
-        if(!(x)) { \
-            printf(RED "[FAIL] " NOCOLOR "%s: %s:%d: ASSERTION %s\n", \
-                   __func__, __FILE__, __LINE__, #x); \
-            return false; \
-        } \
-    } while(0)
+#define TEST_VERBOSE 0
 #endif
 
-#define TEST_ASSERT_EQUAL(x, y) TEST_ASSERT((x) == (y))
+#define TEST_ASSERT_EQUAL(x, y, format) \
+  do { \
+    if ((x) != (y)) { \
+      printf(RED "[FAIL] " NOCOLOR "%s: %s:%d: ASSERTION (%s == %s) failed: ", \
+             __func__, __FILE__, __LINE__, #x, #y); \
+      printf("got " format ", expected " format "\n", x, y); \
+      return false; \
+    } else { \
+      if(TEST_VERBOSE) \
+        printf(GREEN "[PASS] " NOCOLOR "%s: (" format " == " format ")\n", __func__, x, y); \
+    } \
+  } while(0)
+
+#define TEST_ASSERT_EQUAL_INT(x, y) TEST_ASSERT_EQUAL(x, y, "%d")
+#define TEST_ASSERT_EQUAL_SIZE(x, y) TEST_ASSERT_EQUAL(x, y, "%lu")
+#define TEST_ASSERT_EQUAL_PTR(x, y) TEST_ASSERT_EQUAL(x, y, "%p")
 
 typedef struct {
   void (*setup_func)(void);
