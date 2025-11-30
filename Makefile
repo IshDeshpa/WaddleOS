@@ -58,7 +58,7 @@ VALID_TESTS:=$(filter $(ALL_TESTS),$(TESTS))
 VALID_TEST_DIRS:=$(addprefix test/,$(VALID_TESTS))
 VALID_TEST_FILES:=$(foreach d,$(VALID_TEST_DIRS),$(wildcard $(d)/*.c))
 
-TEST_CFLAGS:=-O$(TEST_OPT) $(GENERIC_CFLAGS)
+TEST_CFLAGS:=-O$(TEST_OPT) $(GENERIC_CFLAGS) -DTEST
 TEST_C_INCS:=$(KERNEL_C_INCS) -Itest/
 
 define GET_TEST_SRCS
@@ -71,6 +71,13 @@ endef
 
 VALID_TEST_SRCS:=$(foreach d,$(VALID_TEST_DIRS),$(call GET_TEST_SRCS,$d))
 TEST_ELF_NAME:=$(subst $(space),_,$(VALID_TESTS))
+
+GDB_TEST ?= 0
+ifeq ($(GDB_TEST),1)
+	TEST_GDB:=gdb
+else
+	TEST_GDB:=
+endif
 
 # Bootloader
 BOOT1_C_SRCS := $(wildcard loader/boot1/*.c) $(wildcard lib/*.c)
@@ -177,7 +184,7 @@ $(LOADER_BUILD_DIR)/boot1.bin: $(LOADER_BUILD_DIR)/boot1.elf $(BOOT1_OBJS) $(BIN
 
 # Test
 test: $(TEST_BUILD_DIR)/$(TEST_ELF_NAME).elf
-	@./$(TEST_BUILD_DIR)/$(TEST_ELF_NAME).elf 
+	@$(TEST_GDB) $(TEST_BUILD_DIR)/$(TEST_ELF_NAME).elf 
 
 $(TEST_BUILD_DIR)/$(TEST_ELF_NAME).elf: $(TEST_BUILD_DIR)/gen/test_main.c $(VALID_TEST_SRCS)
 	@mkdir -p $(@D)

@@ -13,6 +13,7 @@ typedef struct {
 void bitmap_init_buf(bitmap_t *bmp, void *buf, size_t num_idx);
 void bitmap_set(bitmap_t *bmp, uint64_t bit_index, bool value);
 bool bitmap_get(bitmap_t *bmp, uint64_t bit_index);
-void bitmap_flip(bitmap_t *bmp, uint64_t start_idx, size_t num_bits);
+void bitmap_flip(bitmap_t *bmp, uint64_t start_idx, uint64_t end_idx);
+int64_t bitmap_test(bitmap_t *bmp, bool value, uint64_t start_idx, uint64_t end_idx, size_t num_bits);
 
 #endif
