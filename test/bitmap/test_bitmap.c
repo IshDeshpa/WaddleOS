@@ -112,3 +112,34 @@ bool test_bitmap_test(){
 
   return true;
 }
+
+bool test_bitmap_test_and_flip() {
+    int64_t ret;
+
+    // Initially, everything is 0
+    // Try flipping 1s: there shouldn't be a run of 1s
+    ret = bitmap_test_and_flip(&bmp, true, 0, BMP_SIZE - 1, 8);
+    TEST_ASSERT_EQUAL_INT(ret, -1); // no run of 1s found
+
+    // Try flipping 0s: should flip first 8 zeros starting at index 0
+    ret = bitmap_test_and_flip(&bmp, false, 0, BMP_SIZE - 1, 8);
+    TEST_ASSERT_EQUAL_INT(ret, 0); // first run of 0s at index 0
+
+    // Verify the bits were actually flipped to 1
+    for (int i = 0; i < 8; i++) {
+        TEST_ASSERT_EQUAL_INT(1, (buf[i / 64] >> (i % 64)) & 1);
+    }
+
+    // Modify buffer to have some 0s 
+    buf[2] = 0xA3; 
+
+    // Try flipping 2 consecutive 1s: should find first run at index 0
+    ret = bitmap_test_and_flip(&bmp, true, 0, BMP_SIZE - 1, 2);
+    TEST_ASSERT_EQUAL_INT(ret, 0); // first run of 2 consecutive 1s
+
+    // Verify the bits at index 16 and 17 were flipped to 0
+    TEST_ASSERT_EQUAL_INT(0, (buf[0] >> 16) & 1);
+    TEST_ASSERT_EQUAL_INT(0, (buf[0] >> 17) & 1);
+
+    return true;
+}

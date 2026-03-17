@@ -14,7 +14,6 @@ _start:
   mov $0x6C00, %sp
 
   # A20 Gate
-
   # busy wait for input buffer
 _lp_inp:
   inb $0x64, %al  # grab from input buffer of keyboard (0x64)
@@ -204,7 +203,7 @@ get_single_mmap:
   pushal
   pushfl
 
-  mov $0x0, (mmap_finished)
+  movl $0x0, (mmap_finished)
 
   pushw $_rmode_get_single_mmap
   call run_rmode_subrt
@@ -246,7 +245,7 @@ _rmode_get_single_mmap:
 
   cmp $0x0, %ebx
   jne _not_done
-  mov $1, (mmap_finished)
+  movl $1, (mmap_finished)
 
 _not_done:
   movl %ebx, (ebx_ret)
@@ -499,7 +498,7 @@ dap:
   .long 24	# sector to be read (starts at 24) 
   .long 0  
 
-.align 4
+.align 8
 gdt:
 gdt_null:
   .quad 0 // quad = quad word (64-bit)
@@ -562,6 +561,8 @@ gdt_data:
   .byte 0b11001111
   .byte 0
 gdt_end:
+
+.align 8
 gdt_desc:
   .word gdt_end - gdt - 1// size of gdt (0-15)
   .long gdt       // gdt address (16-47)

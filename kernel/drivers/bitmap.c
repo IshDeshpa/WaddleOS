@@ -1,8 +1,8 @@
 #include "bitmap.h"
 #include "utils.h"
-#include "printf.h"
 #include <stdint.h>
-#include <string.h>
+#include "string.h"
+#include "printf.h"
 #include <stdbool.h>
 
 void bitmap_init_buf(bitmap_t *bmp, void *buf, size_t num_idx){
@@ -11,7 +11,7 @@ void bitmap_init_buf(bitmap_t *bmp, void *buf, size_t num_idx){
   bmp->buf = buf;
   bmp->size = num_idx;
 
-  memset(buf, 0, ROUND_UP_TO(num_idx, 8));
+  memset(buf, 0, num_idx/8);
 }
 
 void bitmap_set(bitmap_t *bmp, uint64_t bit_index, bool value){
@@ -88,7 +88,6 @@ int64_t bitmap_test(bitmap_t *bmp, bool value, uint64_t start_idx, uint64_t end_
   for (uint64_t i=start_idx; i<=end_idx && num_bits_iter < num_bits; i++) {
     if(bitmap_get(bmp, i) == value){
       if (num_bits_iter == 0) candidate_idx = i; 
-
       num_bits_iter++;
     } else {
       num_bits_iter = 0;
@@ -98,8 +97,24 @@ int64_t bitmap_test(bitmap_t *bmp, bool value, uint64_t start_idx, uint64_t end_
   return (num_bits_iter == num_bits)?candidate_idx:-1;
 }
 
-uint64_t bitmap_test_and_flip(bitmap_t *bmp, bool value, uint64_t start_idx, uint64_t end_idx, size_t num_bits){
-  uint64_t *bmp_arr = bmp->buf;
+// Test for num_bits consecutive values of value in between start_idx and end_idx
+// and flip those consecutive bits
+// Returns the first bit in the series found, or -1 if not
+int64_t bitmap_test_and_flip(bitmap_t *bmp, bool value, uint64_t start_idx, uint64_t end_idx, size_t num_bits){
+  ASSERT(start_idx < bmp->size);
+  ASSERT(end_idx < bmp->size);
+  ASSERT(start_idx <= end_idx);
+  ASSERT(start_idx + num_bits - 1 <= end_idx);
+  ASSERT(num_bits > 0);
+
+  int64_t ret = bitmap_test(bmp, value, start_idx, end_idx, num_bits);
+  if(ret != -1) bitmap_flip(bmp, (uint64_t)ret, (uint64_t)(ret + num_bits - 1));
+
+  return ret;
+}
+
+void bitmap_clear(bitmap_t *bmp){
+  memset(bmp->buf, 0, bmp->size/8);
 }
 
 void bitmap_print(bitmap_t *bmp){

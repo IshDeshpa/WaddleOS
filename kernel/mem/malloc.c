@@ -28,7 +28,7 @@ void malloc_init(void *start_addr, size_t size){
 
 void *malloc(size_t size){
   // Round up size
-  size = (size + 7) & ~0x7;
+  size = ROUND_UP_TO(size, 8);
 
   free_hdr_t *curr = freelist_head;
   free_hdr_t *min = freelist_head;
@@ -49,6 +49,7 @@ void *malloc(size_t size){
   free_hdr_t *next = min->next_free;
   free_hdr_t *prev = min->prev_free;
 
+  // Free -> Alloc | Free
   free_hdr_t *new_next = (free_hdr_t *)((uint8_t *)min + sizeof(alloc_hdr_t) + size);
   new_next->sz = min->sz - size - sizeof(alloc_hdr_t) - sizeof(free_hdr_t);
   new_next->next_free = next;

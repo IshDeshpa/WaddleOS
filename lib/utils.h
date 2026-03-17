@@ -9,7 +9,7 @@
 #endif
 
 #define ASSERT(x) do{while(!(x)){  __asm__ volatile("hlt"); }}while(0)
-#define ROUND_UP_TO(x, r) ((x + r) & ~r)
+#define ROUND_UP_TO(x, r) ((x + (r-1)) & ~(r-1))
 #define MAX(x, y) ((x > y)?x:y)
 #define MIN(x, y) ((x < y)?x:y)
 

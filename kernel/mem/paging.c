@@ -214,17 +214,15 @@ void paging_init(){
   page_tables_init();
 }
 
-void *paging_get_pages(uint8_t flags){
-
-}
-
-void *paging_get_page(uint8_t flags){
+void *paging_get_pages(uint64_t num_pages, uint8_t flags){
   pool_t *mem_pool = &kernel_pool;
   if (flags & PALLOC_USER) {
     mem_pool = &user_pool;
   }
 
-  uint64_t pg_ind = bitmap_test_and_flip(&mem_pool->allocated_bmp, false); 
+  int64_t pg_ind = bitmap_test_and_flip(&mem_pool->allocated_bmp, false, 0, mem_pool->allocated_bmp.size - 1, num_pages);
+  if(pg_ind == -1) return NULL;
+
   void *pg_ptr = pg_ind*4096 + mem_pool->md_base;
 
   log(LOG_TRACE, "Page index allocated: %d\n\r", pg_ind);
@@ -234,6 +232,10 @@ void *paging_get_page(uint8_t flags){
   }
 
   return pg_ptr;
+}
+
+void *paging_get_page(uint8_t flags){
+  return paging_get_pages(1, flags);
 }
 
 // Will only consider vaddr if a user page; kernel pages will auto-map to their proper location in the linear mapping

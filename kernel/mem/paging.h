@@ -94,7 +94,7 @@ typedef enum {
 
 void paging_init();
 
-void *paging_get_pages(uint8_t flags);
+void *paging_get_pages(uint64_t num_pages, uint8_t flags);
 void *paging_get_page(uint8_t flags);
 
 #endif

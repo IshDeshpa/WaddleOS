@@ -22,15 +22,15 @@ extern Elf64_Addr _kernel_entry;
 void load_sector_asm(uint16_t sector, uint16_t num_sectors);
 void load_sector(uint16_t sector, uint16_t num_sectors, uint8_t* address){
   while(num_sectors > 0){
-    uint16_t sectors_now = (num_sectors > 24)?24:num_sectors;
+    uint16_t sectors_curr = (num_sectors > 24)?24:num_sectors;
     
-    load_sector_asm(sector, sectors_now); // loads num sectors starting at sector into 0x8000
+    load_sector_asm(sector, sectors_curr); // loads num sectors starting at sector into 0x8000
     // Memcopy
-    memcpy(address, ((const void*)DISK_BUFFER_ADDR), (sectors_now << 9));
+    memcpy(address, ((const void*)DISK_BUFFER_ADDR), (sectors_curr << 9));
 
-    sector += sectors_now;
-    address += (sectors_now << 9);
-    num_sectors -= sectors_now;
+    sector += sectors_curr;
+    address += (sectors_curr << 9);
+    num_sectors -= sectors_curr;
   }
 }
 

@@ -1,5 +1,6 @@
 #include "idt.h"
 #include "paging.h"
+#include "malloc.h"
 #include "term.h"
 #include "serial.h"
 #include "printf.h"
@@ -8,6 +9,8 @@
 #include "pit.h"
 #include "utils.h"
 #include "multiboot2.h"
+
+#define KERNEL_HEAP_PAGES (10)
 
 #ifdef __linux__
   #error "ERROR: Must be compiled via cross-compiler"
@@ -28,7 +31,8 @@ void kernel_main(){
   interrupts_init();
 
   // Memory init
-  paging_init();
+  paging_init(); // paging structures
+  malloc_init(paging_get_pages(KERNEL_HEAP_PAGES, 0), KERNEL_HEAP_PAGES*PAGE_SIZE);
 
   pit_init(100); // 100 hz
   

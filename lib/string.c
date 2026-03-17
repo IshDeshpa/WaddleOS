@@ -29,6 +29,9 @@ void *memmove(void *to, const void *from, size_t numBytes){
       n-=sizeof(uintptr_t);
     }
 
+    d = (uint8_t *)d_word;
+    s = (const uint8_t *)s_word;
+
     // 3) Copy data in bytes again
     while(n > 0){
       *d++ = *s++;
@@ -52,6 +55,9 @@ void *memmove(void *to, const void *from, size_t numBytes){
       *--d_word = *--s_word; 
       n-=sizeof(uintptr_t);
     }
+
+    d = (uint8_t *)d_word;
+    s = (const uint8_t *)s_word;
 
     // 3) Copy data in bytes again
     while(n > 0){

@@ -15,5 +15,7 @@ void bitmap_set(bitmap_t *bmp, uint64_t bit_index, bool value);
 bool bitmap_get(bitmap_t *bmp, uint64_t bit_index);
 void bitmap_flip(bitmap_t *bmp, uint64_t start_idx, uint64_t end_idx);
 int64_t bitmap_test(bitmap_t *bmp, bool value, uint64_t start_idx, uint64_t end_idx, size_t num_bits);
+int64_t bitmap_test_and_flip(bitmap_t *bmp, bool value, uint64_t start_idx, uint64_t end_idx, size_t num_bits);
+void bitmap_clear(bitmap_t *bmp);
 
 #endif

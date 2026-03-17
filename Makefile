@@ -22,28 +22,29 @@ LD=$(CROSS_BUILD_DIR)/bin/$(TARGET)-ld
 SZ=$(CROSS_BUILD_DIR)/bin/$(TARGET)-size
 OBJCOPY=$(CROSS_BUILD_DIR)/bin/$(TARGET)-objcopy
 OBJDUMP=$(CROSS_BUILD_DIR)/bin/$(TARGET)-objdump
-GCC_STAMP=$(CROSS_BUILD_DIR)/.gcc-built
-BINUTILS_STAMP=$(CROSS_BUILD_DIR)/.binutils-built
+GCC_STAMP=$(GCC_BUILD_DIR)/.gcc-built
+BINUTILS_STAMP=$(BINUTILS_BUILD_DIR)/.binutils-built
 
 # CFLAGS
 KERNEL_OPT ?= z
-LIB_OPT ?= 3
+LIB_OPT ?= z
 TEST_OPT ?= z
 BOOT_OPT ?= z
 
 FREESTANDING_CFLAGS=-ffreestanding -nostdlib
-GENERIC_CFLAGS=-std=gnu99 -g -Wall -Wextra -D__x86_64__
+GENERIC_CFLAGS=-std=gnu99 -g -Wall -Wextra
 
 # Kernel
 KERNEL_C_SRCS   := $(wildcard kernel/*.c) $(wildcard kernel/**/*.c) $(wildcard lib/*.c)
 KERNEL_ASM_SRCS := $(wildcard kernel/*.S) $(wildcard kernel/**/*.S) $(wildcard lib/*.S)
-KERNEL_C_OBJS   := $(patsubst kernel/%.c,$(KERNEL_BUILD_DIR)/%.o,$(filter kernel/%,$(C_SRCS))) \
-            $(patsubst lib/%.c,$(KERNEL_BUILD_DIR)/lib/%.o,$(filter lib/%,$(C_SRCS)))
-KERNEL_ASM_OBJS := $(patsubst kernel/%.S,$(KERNEL_BUILD_DIR)/%.o,$(filter kernel/%,$(ASM_SRCS))) \
-            $(patsubst lib/%.S,$(KERNEL_BUILD_DIR)/lib/%.o,$(filter lib/%,$(ASM_SRCS)))
-KERNEL_OBJS:=$(C_OBJS) $(ASM_OBJS)
+KERNEL_C_OBJS   := $(patsubst kernel/%.c,$(KERNEL_BUILD_DIR)/%.o,$(filter kernel/%,$(KERNEL_C_SRCS))) \
+            $(patsubst lib/%.c,$(KERNEL_BUILD_DIR)/lib/%.o,$(filter lib/%,$(KERNEL_C_SRCS)))
+KERNEL_ASM_OBJS := $(patsubst kernel/%.S,$(KERNEL_BUILD_DIR)/%.o,$(filter kernel/%,$(KERNEL_ASM_SRCS))) \
+            $(patsubst lib/%.S,$(KERNEL_BUILD_DIR)/lib/%.o,$(filter lib/%,$(KERNEL_ASM_SRCS)))
+KERNEL_OBJS:=$(KERNEL_C_OBJS) $(KERNEL_ASM_OBJS)
 KERNEL_C_INCS:=$(foreach dir,$(shell find kernel -type d),-I$(dir)) -Ilib/
-KERNEL_CFLAGS:=-O$(KERNEL_OPT) $(GENERIC_CFLAGS) $(FREESTANDING_CFLAGS) -mcmodel=large -mno-red-zone
+KERNEL_CFLAGS:=-O$(KERNEL_OPT) $(GENERIC_CFLAGS) $(FREESTANDING_CFLAGS) -mno-red-zone -D__x86_64__
+KERNEL_MCMODEL:=large
 
 # Lib
 LIB_CFLAGS:=-O$(LIB_OPT) $(GENERIC_CFLAGS) $(FREESTANDING_CFLAGS)
@@ -120,32 +121,32 @@ disk: $(BUILD_DIR)/disk.img
 	$(SZ) $(KERNEL_BUILD_DIR)/kernel.elf
 
 $(BUILD_DIR)/disk.img: $(KERNEL_BUILD_DIR)/kernel.elf $(LOADER_BUILD_DIR)/boot0.bin $(LOADER_BUILD_DIR)/boot1.bin
-	dd if=$(LOADER_BUILD_DIR)/boot0.bin of=$(BUILD_DIR)/disk.img bs=512 count=1
-	dd if=$(LOADER_BUILD_DIR)/boot1.bin of=$(BUILD_DIR)/disk.img bs=512 seek=5
-	dd if=$(KERNEL_BUILD_DIR)/kernel.elf of=$(BUILD_DIR)/disk.img bs=512 seek=12
+	dd if=$(LOADER_BUILD_DIR)/boot0.bin of=$(BUILD_DIR)/disk.img bs=512 count=1 conv=notrunc
+	dd if=$(LOADER_BUILD_DIR)/boot1.bin of=$(BUILD_DIR)/disk.img bs=512 seek=1 conv=notrunc
+	dd if=$(KERNEL_BUILD_DIR)/kernel.elf of=$(BUILD_DIR)/disk.img bs=512 seek=12 conv=notrunc
 
 # Kernel
 kernel: $(KERNEL_BUILD_DIR)/kernel.elf
 
 $(KERNEL_BUILD_DIR)/%.o: kernel/%.c $(GCC_STAMP)
 	@mkdir -p $(@D)
-	$(CC) $(KERNEL_CFLAGS) $(KERNEL_C_INCS) -c $< -o $@
+	$(CC) $(KERNEL_CFLAGS) -mcmodel=$(KERNEL_MCMODEL) $(KERNEL_C_INCS) -c $< -o $@
 
 $(KERNEL_BUILD_DIR)/%.o: kernel/%.S $(GCC_STAMP)
 	@mkdir -p $(@D)
-	$(CC) $(KERNEL_CFLAGS) $(KERNEL_C_INCS) -c $< -o $@
+	$(CC) $(KERNEL_CFLAGS) -mcmodel=$(KERNEL_MCMODEL) $(KERNEL_C_INCS) -c $< -o $@
 
 $(KERNEL_BUILD_DIR)/lib/%.o: lib/%.c $(GCC_STAMP)
 	@mkdir -p $(@D)
-	$(CC) $(LIB_CFLAGS) $(KERNEL_C_INCS) -c $< -o $@
+	$(CC) $(LIB_CFLAGS) -mcmodel=$(KERNEL_MCMODEL) $(KERNEL_C_INCS) -c $< -o $@
 
 $(KERNEL_BUILD_DIR)/lib/%.o: lib/%.S $(GCC_STAMP)
 	@mkdir -p $(@D)
-	$(CC) $(LIB_CFLAGS) $(KERNEL_C_INCS) -c $< -o $@
+	$(CC) $(LIB_CFLAGS) -mcmodel=$(KERNEL_MCMODEL) $(KERNEL_C_INCS) -c $< -o $@
 
 $(KERNEL_BUILD_DIR)/kernel.elf: $(KERNEL_OBJS) $(GCC_STAMP)
 	@mkdir -p $(@D)
-	$(CC) $(KERNEL_CFLAGS) $(KERNEL_C_INCS) -T kernel/linker.ld $(KERNEL_OBJS) -o $@ -lgcc
+	$(CC) $(KERNEL_CFLAGS) -mcmodel=$(KERNEL_MCMODEL) $(KERNEL_C_INCS) -T kernel/linker.ld $(KERNEL_OBJS) -o $@ -lgcc
 
 # Bootloader
 loader: $(LOADER_BUILD_DIR)/boot0.bin $(LOADER_BUILD_DIR)/boot1.bin
@@ -264,7 +265,7 @@ dump-kernel: $(KERNEL_BUILD_DIR)/kernel.elf $(BINUTILS_STAMP)
 	$(OBJDUMP) -d $< -m i8086
 
 clean:
-	-rm -rf $(KERNEL_BUILD_DIR) $(LOADER_BUILD_DIR) $(LIB_BUILD_DIR) $(TEST_BUILD_DIR)
+	-rm -rf $(KERNEL_BUILD_DIR) $(LOADER_BUILD_DIR) $(TEST_BUILD_DIR)
 
 clean-cross:
 	-rm -rf $(CROSS_BUILD_DIR) $(GCC_BUILD_DIR) $(BINUTILS_BUILD_DIR)
