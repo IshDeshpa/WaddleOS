@@ -43,10 +43,8 @@ int main(){
 
     if(num_successes == t.count){
       printf(GREEN "[PASS] %d/%d %s " MAGENTA "SUITE\n\r" NOCOLOR, num_successes, t.count, t.name);
-      return 0;
     } else {
       printf(RED "[FAIL] %d/%d %s " MAGENTA "SUITE\n\r" NOCOLOR, num_successes, t.count, t.name);
-      return -1;
     }
   }
 }

@@ -431,7 +431,7 @@ long_mode:
   movl $((p2t_addr & pt_addr_mask) | pt_present | pt_readable), %eax
   movl $0, %edx
   movl %eax, p3t_2_addr + (510 * pt_entry_size)
-  movl %edx, p3t_addr + (510 * pt_entry_size) + 4
+  movl %edx, p3t_2_addr + (510 * pt_entry_size) + 4
 
   # p2 first entry points to p1
   movl $((p1t_addr & pt_addr_mask) | pt_present | pt_readable), %eax

@@ -70,8 +70,10 @@ $(shell \
     fi)
 endef
 
+empty :=
+space := $(empty) $(empty)
 VALID_TEST_SRCS:=$(foreach d,$(VALID_TEST_DIRS),$(call GET_TEST_SRCS,$d))
-TEST_ELF_NAME:=$(subst $(space),_,$(VALID_TESTS))
+TEST_ELF_NAME:=$(subst $(space),_,$(strip $(VALID_TESTS)))
 
 GDB_TEST ?= 0
 ifeq ($(GDB_TEST),1)

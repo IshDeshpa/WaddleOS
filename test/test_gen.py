@@ -90,7 +90,7 @@ if __name__ == "__main__":
     for test in args.test_sources:
         test_protos, test_suite_arr, test_suite_struct = print_func_defs(test, args.cflags[0].split(' '))
         
-        all_test_protos += test_protos
+        all_test_protos += test_protos + "\n\n"
         all_test_suite_arrs += test_suite_arr + "\n"
         all_test_suite_structs += test_suite_struct + ", "
 

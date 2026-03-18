@@ -1,9 +1,15 @@
 #include "bitmap.h"
 #include "utils.h"
 #include <stdint.h>
+#include <stdbool.h>
+
+#ifdef TEST
+#include <stdio.h>
+#include <string.h>
+#else
 #include "string.h"
 #include "printf.h"
-#include <stdbool.h>
+#endif
 
 void bitmap_init_buf(bitmap_t *bmp, void *buf, size_t num_idx){
   ASSERT(buf != 0);
