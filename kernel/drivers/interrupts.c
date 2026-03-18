@@ -78,7 +78,7 @@ bool interrupts_active(){
   return i_active;
 }
 
-void exception_handler(interrupt_frame_t *interrupt_frame, uint64_t vector_number) {
+void exception_handler(volatile interrupt_frame_t *interrupt_frame, volatile uint64_t vector_number) {
   log(LOG_TRACE, "Vector Number %d\n\r", vector_number);
   log(LOG_TRACE, "Error code: %d\n\r", interrupt_frame->error_code);
  
@@ -90,7 +90,7 @@ void exception_handler(interrupt_frame_t *interrupt_frame, uint64_t vector_numbe
   while(1);
 }
 
-void interrupt_handler(interrupt_frame_t *interrupt_frame, uint64_t irq_number){
+void interrupt_handler(volatile interrupt_frame_t *interrupt_frame, volatile uint64_t irq_number){
   log(LOG_TRACE, "IRQ %d\n\r", irq_number);
 
   ASSERT(irq_number >= 32 && irq_number < 48);

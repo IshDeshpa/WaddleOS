@@ -32,7 +32,7 @@ TEST_OPT ?= z
 BOOT_OPT ?= z
 
 FREESTANDING_CFLAGS=-ffreestanding -nostdlib
-GENERIC_CFLAGS=-std=gnu99 -g -Wall -Wextra
+GENERIC_CFLAGS=-std=gnu99 -g -Wall -Wextra -mno-sse -mno-sse2 -mno-mmx
 
 # Kernel
 KERNEL_C_SRCS   := $(wildcard kernel/*.c) $(wildcard kernel/**/*.c) $(wildcard lib/*.c)
@@ -259,10 +259,10 @@ dump-boot0: $(LOADER_BUILD_DIR)/boot0.o $(BINUTILS_STAMP)
 	$(OBJDUMP) -d $< -m i8086
 
 dump-boot1: $(LOADER_BUILD_DIR)/boot1.elf $(BINUTILS_STAMP)
-	$(OBJDUMP) -d $< -m i8086
+	$(OBJDUMP) -d $<
 
 dump-kernel: $(KERNEL_BUILD_DIR)/kernel.elf $(BINUTILS_STAMP)
-	$(OBJDUMP) -d $< -m i8086
+	$(OBJDUMP) -d $<
 
 clean:
 	-rm -rf $(KERNEL_BUILD_DIR) $(LOADER_BUILD_DIR) $(TEST_BUILD_DIR)

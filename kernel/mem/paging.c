@@ -7,14 +7,14 @@
 #include "utils.h"
 #include "multiboot_parser.h"
 
-#define LOG_LEVEL 0
-#define LOG_ENABLE 0
+#define LOG_LEVEL 6
+#define LOG_ENABLE 1
 #include "log.h"
 
 static struct multiboot_mmap_entry memory_map[10];
 static int memory_map_len = 0;
 
-uint64_t pool_pages_total;
+static uint64_t pool_pages_total;
 static uintptr_t phys_mem_end;
 extern char _kernel_end;
 
@@ -61,22 +61,25 @@ static void memory_map_init(){
 
   // Print
   for(int i=0; i<memory_map_len; i++){
-    log(LOG_TRACE, "\t%x-%x\n\r", memory_map[i].addr, memory_map[i].len);
-    log(LOG_TRACE, "\t\t%d\n\r", memory_map[i].type);
+    log(LOG_TRACE, "%d: %x - %x\n\r", i, memory_map[i].addr, memory_map[i].addr + memory_map[i].len);
+    log(LOG_TRACE, "\t%d\n\r", memory_map[i].type);
   }
 
   phys_mem_end = memory_map[memory_map_len - 1].addr + memory_map[memory_map_len - 1].len; // subtract 1MiB from memory size allocated for random bootloader crap
 }
 
 static void memory_pool_init(void *pool_base, size_t pool_pages, pool_t *pool_struct){
-  uint8_t md_pages = ROUND_UP_TO(pool_pages * 2, 4096); // 2 bits per page, rounded up to nearest page bound
+  size_t bmp_bytes = (pool_pages + 7)/8;
+  size_t total_bytes = bmp_bytes * 2;
+  size_t md_pages = ROUND_UP_TO(total_bytes, 4096) / 4096;
+  
   pool_struct->md_base = pool_base;
   pool_struct->page_base = pool_base + md_pages*4096;
   bitmap_init_buf(&pool_struct->allocated_bmp, pool_base, pool_pages);
   bitmap_init_buf(&pool_struct->reserved_bmp, pool_base+(pool_pages+7)/8, pool_pages);
 
   // Mark bitmap pages as allocated and reserved
-  for(int i=0; i<md_pages; i++){
+  for(size_t i=0; i<md_pages; i++){
     bitmap_set(&pool_struct->allocated_bmp, i, true);
     bitmap_set(&pool_struct->reserved_bmp, i, true);
   }
@@ -110,25 +113,27 @@ static void memory_pool_init(void *pool_base, size_t pool_pages, pool_t *pool_st
 }
 
 static inline void *pde_init(pde_t *entry, bool allow_user_access){
-  void *base;
+  void *v_base;
+  void *p_base;
   if (GET_BITS(*entry, PDE_PTE_PRESENT_POS, PDE_PTE_PRESENT_LEN) == 0){
-    base = virt_to_phys(paging_get_page(PALLOC_ZERO));
+    v_base = paging_get_page(PALLOC_ZERO);
+    p_base = virt_to_phys(v_base);
     log(LOG_TRACE, "Allocating new page for PDE...\n\r");
   } else{
-    base = (void *)(GET_BITS(*entry, PDE_PTE_BASE_POS, PDE_PTE_BASE_LEN) << 12);
-    log(LOG_TRACE, "Using existing page for PDE... %x\n\r", base);
+    p_base = (void *)(GET_BITS(*entry, PDE_PTE_BASE_POS, PDE_PTE_BASE_LEN) << 12);
+    v_base = phys_to_virt(p_base);
+    log(LOG_TRACE, "Using existing page for PDE... %x\n\r", p_base);
   }
 
   // Clear
   memset(entry, 0, sizeof(pde_t));
 
-  *entry = SET_BITS(*entry, PDE_PTE_BASE_POS, PDE_PTE_BASE_LEN, (uintptr_t)base >> 12); // base address
-
+  *entry = SET_BITS(*entry, PDE_PTE_BASE_POS, PDE_PTE_BASE_LEN, (uintptr_t)p_base >> 12); // base address
   *entry = SET_BITS(*entry, PDE_PTE_US_POS, PDE_PTE_US_LEN, allow_user_access); // user/supervisor
   *entry = SET_BITS(*entry, PDE_PTE_RW_POS, PDE_PTE_RW_LEN, 1); // rw
   *entry = SET_BITS(*entry, PDE_PTE_PRESENT_POS, PDE_PTE_PRESENT_LEN, 1); // present
   
-  return base;
+  return v_base;
 }
 
 static inline void pte_init(pte_t *entry, void *phys_addr, bool allow_user_access){
@@ -190,6 +195,8 @@ static void page_tables_init(){
 }
 
 static void page_fault_handler(interrupt_frame_t *frame){
+  (void)frame;
+
   uintptr_t fault_addr;
   asm volatile ("mov %%cr2, %0" : "=r"(fault_addr));
 
@@ -223,7 +230,7 @@ void *paging_get_pages(uint64_t num_pages, uint8_t flags){
   int64_t pg_ind = bitmap_test_and_flip(&mem_pool->allocated_bmp, false, 0, mem_pool->allocated_bmp.size - 1, num_pages);
   if(pg_ind == -1) return NULL;
 
-  void *pg_ptr = pg_ind*4096 + mem_pool->md_base;
+  void *pg_ptr = pg_ind*4096 + mem_pool->page_base;
 
   log(LOG_TRACE, "Page index allocated: %d\n\r", pg_ind);
   
@@ -238,12 +245,3 @@ void *paging_get_page(uint8_t flags){
   return paging_get_pages(1, flags);
 }
 
-// Will only consider vaddr if a user page; kernel pages will auto-map to their proper location in the linear mapping
-void *paging_get_and_map_page(uint8_t flags, void *vaddr){
-  void *paddr = virt_to_phys(paging_get_page(flags));
-  if (flags & PALLOC_USER){
-    paging_map_page(vaddr, paddr);
-  } else {
-    paging_map_page(vaddr, virt_to_phys(vaddr));
-  }
-}

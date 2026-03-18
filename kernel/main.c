@@ -32,7 +32,7 @@ void kernel_main(){
 
   // Memory init
   paging_init(); // paging structures
-  malloc_init(paging_get_pages(KERNEL_HEAP_PAGES, 0), KERNEL_HEAP_PAGES*PAGE_SIZE);
+  // malloc_init(paging_get_pages(KERNEL_HEAP_PAGES, 0), KERNEL_HEAP_PAGES*PAGE_SIZE);
 
   pit_init(100); // 100 hz
   
