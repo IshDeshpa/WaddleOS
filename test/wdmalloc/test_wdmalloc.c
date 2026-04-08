@@ -14,8 +14,10 @@ void wd_print_heap_state();
 bool test_heap_1(){
   void *ptr = wdmalloc(3); // allocate three bytes
 
+#if (TEST_VERBOSE==1)
   printf("\nptr = wdmalloc(3);\n\r");
   wd_print_heap_state();
+#endif
   
   // bounds check
   TEST_ASSERT_LT_PTR((uint8_t*)ptr, heap_buf+HEAP_SIZE);
@@ -27,61 +29,79 @@ bool test_heap_1(){
 
   wdfree(ptr);
 
+#if (TEST_VERBOSE==1)
   printf("\nwdfree(ptr);\n\r");
   wd_print_heap_state();
+#endif
 
   // after free, the same address should be reused on next alloc of same size
   void *ptr2 = wdmalloc(3);
 
+#if (TEST_VERBOSE==1)
   printf("\nptr2 = wdmalloc(3);\n\r");
   wd_print_heap_state();
+#endif
 
   TEST_ASSERT_EQ_PTR(ptr2, ptr);
 
   wdfree(ptr2);
 
+#if (TEST_VERBOSE==1)
   printf("\nwdfree(ptr2);\n\r");
   wd_print_heap_state();
+#endif
 
   // alloc after free should still be in bounds
   void *ptr3 = wdmalloc(3);
 
+#if (TEST_VERBOSE==1)
   printf("\nptr3 = wdmalloc(3);\n\r");
   wd_print_heap_state();
+#endif
 
   TEST_ASSERT_LT_PTR((uint8_t*)ptr3, heap_buf+HEAP_SIZE);
   TEST_ASSERT_GEQ_PTR((uint8_t*)ptr3, heap_buf);
   wdfree(ptr3);
 
+#if (TEST_VERBOSE==1)
   printf("\nwdfree(ptr3);\n\r");
   wd_print_heap_state();
+#endif
 
   // double alloc: freeing first should not corrupt second
   void *a = wdmalloc(3);
 
+#if (TEST_VERBOSE==1)
   printf("\na = wdmalloc(3);\n\r");
   wd_print_heap_state();
+#endif
 
   void *b = wdmalloc(3);
 
+#if (TEST_VERBOSE==1)
   printf("\nb = wdmalloc(3);\n\r");
   wd_print_heap_state();
+#endif
 
   TEST_ASSERT_NEQ_PTR(a, b);
   memset(b, 0xCD, 3);
 
   wdfree(a);
   
+#if (TEST_VERBOSE==1)
   printf("\nwdfree(a);\n\r");
   wd_print_heap_state();
+#endif
 
   TEST_ASSERT_EQ_INT(((uint8_t*)b)[0], 0xCD);  // b's contents should be intact
   TEST_ASSERT_EQ_INT(((uint8_t*)b)[2], 0xCD);
 
   wdfree(b);
 
+#if (TEST_VERBOSE==1)
   printf("\nwdfree(b);\n\r");
   wd_print_heap_state();
+#endif
 
   return true;
 }

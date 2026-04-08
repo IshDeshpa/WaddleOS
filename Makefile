@@ -82,6 +82,11 @@ else
 	TEST_GDB:=
 endif
 
+TEST_VERBOSE ?= 0
+ifeq ($(TEST_VERBOSE),1)
+	TEST_CFLAGS += -DTEST_VERBOSE
+endif
+
 # Bootloader
 BOOT1_C_SRCS := $(wildcard loader/boot1/*.c) $(wildcard lib/*.c)
 BOOT1_ASM_SRCS := $(wildcard loader/boot1/*.S) $(wildcard lib/*.S)
