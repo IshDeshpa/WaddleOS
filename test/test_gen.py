@@ -53,8 +53,8 @@ class FuncDefVisitor(c_ast.NodeVisitor):
 
 def print_func_defs(file, cpp_args):
     cpp_args.append(fake_libc_arg)
-
     cpp_args.append('-E')
+    cpp_args.append('-D__attribute__(x)=')
 
     ast = parse_file(file, use_cpp=True, cpp_path="gcc", cpp_args=cpp_args)
     v = FuncDefVisitor()

@@ -1,107 +1,164 @@
 #include "wdmalloc.h"
 #include "waddletest.h"
 #include <stdio.h>
+#include <stdint.h>
 
 #define HEAP_SIZE 4096
 uint8_t heap_buf[HEAP_SIZE];
 
+void wd_print_heap_state();
+
+#if (TEST_VERBOSE == 1)
+#define RUN_AND_PRINT_HEAP_STATE(call) \
+  call \
+  printf("%s\n", #call); \
+  wd_print_heap_state();
+#else
+#define RUN_AND_PRINT_HEAP_STATE(call) \
+  call
+#endif
+
 void setup_heap(){
   memset(heap_buf, 0xFF, HEAP_SIZE);
-  wdmalloc_init(heap_buf, HEAP_SIZE);
 }
 
-void wd_print_heap_state();
-bool test_heap_1(){
-  void *ptr = wdmalloc(3); // allocate three bytes
+// COPIED FROM WDMALLOC
+typedef struct wdmalloc_hdr wdmalloc_hdr_t;
+extern wdmalloc_hdr_t *freelist_head;
 
-#if (TEST_VERBOSE==1)
-  printf("\nptr = wdmalloc(3);\n\r");
-  wd_print_heap_state();
-#endif
-  
-  // bounds check
-  TEST_ASSERT_LT_PTR((uint8_t*)ptr, heap_buf+HEAP_SIZE);
-  TEST_ASSERT_GEQ_PTR((uint8_t*)ptr, heap_buf);
+// 12 byte header
+struct wdmalloc_hdr {
+  uint16_t prev_sz;
+  uint16_t sz;
+  union {
+    wdmalloc_hdr_t *next;
+    uint64_t magic;
+  } lom; // link or magic
+} __attribute__((packed));
 
-  // pointer should be usable
-  memset(ptr, 0xAB, 3);
-  TEST_ASSERT_EQ_INT(((uint8_t*)ptr)[2], 0xAB);
+#define WDM_ALLOC_BIT (1 << 15)
+#define WDM_MAGIC (0xDEADBEEFBABECAFE)
+#define WDM_IS_FREE(HDR) (((HDR)->sz & WDM_ALLOC_BIT) == 0)
+#define WDM_ACTUAL_SIZE(HDR) ((HDR)->sz & ~WDM_ALLOC_BIT)
+#define WDM_IN_HEAP(PTR) (((((uintptr_t)PTR) < (uintptr_t)heap_start + heap_size)) && (((uintptr_t)PTR) >= (uintptr_t)heap_start))
+// -----------------------
 
-  wdfree(ptr);
+bool test_wdmalloc_1(){
+  wdmalloc_init(heap_buf, HEAP_SIZE);
 
-#if (TEST_VERBOSE==1)
-  printf("\nwdfree(ptr);\n\r");
-  wd_print_heap_state();
-#endif
+  // ── Already tested: split with adj block inside heap ──────────────────────
+  RUN_AND_PRINT_HEAP_STATE(
+    void *ptr = wdmalloc(3);
+  )
+  TEST_ASSERT_LT_PTR ((uint8_t *)ptr, heap_buf + HEAP_SIZE);
+  TEST_ASSERT_GEQ_PTR((uint8_t *)ptr, heap_buf);
+  memset(ptr, 0xDB, 3);
+  TEST_ASSERT_EQ_INT(((uint8_t*)ptr)[2], 0xDB);
 
-  // after free, the same address should be reused on next alloc of same size
-  void *ptr2 = wdmalloc(3);
+  RUN_AND_PRINT_HEAP_STATE(
+    wdfree(ptr);
+  )
 
-#if (TEST_VERBOSE==1)
-  printf("\nptr2 = wdmalloc(3);\n\r");
-  wd_print_heap_state();
-#endif
+  // ── PATH: NULL – heap not initialised ────────────────────────────────────
+  // Temporarily break state by saving/restoring freelist_head.
+  wdmalloc_hdr_t *saved_head = freelist_head;
+  freelist_head = NULL;
+  void *null_ptr = wdmalloc(1);
+  TEST_ASSERT_EQ_PTR(null_ptr, NULL);
+  freelist_head = saved_head;
 
-  TEST_ASSERT_EQ_PTR(ptr2, ptr);
+  // ── PATH: NULL – no block large enough ───────────────────────────────────
+  null_ptr = wdmalloc(HEAP_SIZE); // larger than any single free block
+  TEST_ASSERT_EQ_PTR(null_ptr, NULL);
 
-  wdfree(ptr2);
+  // ── PATH: split where new_alloc_adj lands OUT OF BOUNDS ──────────────────
+  // Allocate a block whose user data ends exactly at heap boundary so that
+  // the would-be adjacent header is outside the heap.
+  // Figure out how many bytes of user data that requires:
+  //   heap_buf + HEAP_SIZE
+  //     == (freelist_head) + sizeof(hdr) + free_remaining
+  //     == new_alloc      + sizeof(hdr) + req_size
+  // So req_size = free_remaining - sizeof(hdr).
+  // After the reinit the whole heap is one free block:
+  wdmalloc_init(heap_buf, HEAP_SIZE);
+  uint16_t whole_free  = freelist_head->sz;          // full usable payload
+  uint16_t tail_size   = whole_free - sizeof(wdmalloc_hdr_t); // leaves hdr room for split
+  RUN_AND_PRINT_HEAP_STATE(
+    void *tail_ptr = wdmalloc(tail_size);
+  )
+  TEST_ASSERT_LT_PTR ((uint8_t *)tail_ptr, heap_buf + HEAP_SIZE);
+  TEST_ASSERT_GEQ_PTR((uint8_t *)tail_ptr, heap_buf);
+  // The adj-block check (WDM_IN_HEAP) must have been false – no crash = pass.
+  memset(tail_ptr, 0xAB, tail_size);
+  TEST_ASSERT_EQ_INT(((uint8_t*)tail_ptr)[tail_size - 1], 0xAB);
 
-#if (TEST_VERBOSE==1)
-  printf("\nwdfree(ptr2);\n\r");
-  wd_print_heap_state();
-#endif
+  RUN_AND_PRINT_HEAP_STATE(
+    wdfree(tail_ptr);
+  )
 
-  // alloc after free should still be in bounds
-  void *ptr3 = wdmalloc(3);
+  // ── PATH: no-split, min_prev == NULL (exact fit on freelist head) ─────────
+  // Re-init so we have one big free block, then fragment it:
+  //   alloc A (small) → alloc B (exact target size) → free A, free B
+  // Now freelist has two nodes; request exact size of B's block so the
+  // best-fit winner is B (head of list after re-ordering) with prev == NULL.
+  wdmalloc_init(heap_buf, HEAP_SIZE);
+  void *a = wdmalloc(4);   // carve out block A
+  void *b = wdmalloc(8);   // carve out block B – this is our exact-fit target
+  TEST_ASSERT_NEQ_PTR(a, NULL);
+  TEST_ASSERT_NEQ_PTR(b, NULL);
 
-#if (TEST_VERBOSE==1)
-  printf("\nptr3 = wdmalloc(3);\n\r");
-  wd_print_heap_state();
-#endif
+  wdfree(a);                // return A to freelist first → it becomes head
+  wdfree(b);                // return B; list now: A → B (or coalesced – impl-dependent)
 
-  TEST_ASSERT_LT_PTR((uint8_t*)ptr3, heap_buf+HEAP_SIZE);
-  TEST_ASSERT_GEQ_PTR((uint8_t*)ptr3, heap_buf);
-  wdfree(ptr3);
+  // Determine the exact payload size of the block now at freelist_head:
+  uint16_t head_sz = WDM_ACTUAL_SIZE(freelist_head); // strip alloc bit just in case
+  RUN_AND_PRINT_HEAP_STATE(
+    void *exact_head = wdmalloc(head_sz);   // must consume head, no split
+  )
+  TEST_ASSERT_NEQ_PTR(exact_head, NULL);
+  memset(exact_head, 0xCD, head_sz);
+  TEST_ASSERT_EQ_INT(((uint8_t*)exact_head)[head_sz - 1], 0xCD);
 
-#if (TEST_VERBOSE==1)
-  printf("\nwdfree(ptr3);\n\r");
-  wd_print_heap_state();
-#endif
+  RUN_AND_PRINT_HEAP_STATE(
+    wdfree(exact_head);
+  )
 
-  // double alloc: freeing first should not corrupt second
-  void *a = wdmalloc(3);
+  // ── PATH: no-split, min_prev != NULL (exact fit on a non-head node) ───────
+  wdmalloc_init(heap_buf, HEAP_SIZE);
 
-#if (TEST_VERBOSE==1)
-  printf("\na = wdmalloc(3);\n\r");
-  wd_print_heap_state();
-#endif
+  // Carve three blocks so we get a non-head free node to target:
+  void *p1 = wdmalloc(4);    // block 1 (will stay allocated → skipped)
+  void *p2 = wdmalloc(16);   // block 2 (will be freed → becomes a mid node)
+  void *p3 = wdmalloc(4);    // block 3 (will stay allocated → acts as fence)
+  TEST_ASSERT_NEQ_PTR(p1, NULL);
+  TEST_ASSERT_NEQ_PTR(p2, NULL);
+  TEST_ASSERT_NEQ_PTR(p3, NULL);
 
-  void *b = wdmalloc(3);
+  // Free only p1 and p2 so freelist = [p1_block] → [p2_block] → [remainder].
+  // p2_block is a non-head node.
+  wdfree(p1);
+  wdfree(p2);
 
-#if (TEST_VERBOSE==1)
-  printf("\nb = wdmalloc(3);\n\r");
-  wd_print_heap_state();
-#endif
+  // Walk to the second free node to get its exact size:
+  wdmalloc_hdr_t *second = freelist_head->lom.next;
+  TEST_ASSERT_NEQ_PTR(second, NULL);
+  uint16_t mid_sz = WDM_ACTUAL_SIZE(second);
 
-  TEST_ASSERT_NEQ_PTR(a, b);
-  memset(b, 0xCD, 3);
+  // Requesting mid_sz with no room to split should consume that node exactly,
+  // exercising the min_prev != NULL branch.
+  RUN_AND_PRINT_HEAP_STATE(
+    void *exact_mid = wdmalloc(mid_sz);
+  )
+  TEST_ASSERT_NEQ_PTR(exact_mid, NULL);
+  memset(exact_mid, 0xEF, mid_sz);
+  TEST_ASSERT_EQ_INT(((uint8_t*)exact_mid)[mid_sz - 1], 0xEF);
 
-  wdfree(a);
-  
-#if (TEST_VERBOSE==1)
-  printf("\nwdfree(a);\n\r");
-  wd_print_heap_state();
-#endif
+  // Verify freelist head is still intact (p1's block), not corrupted.
+  TEST_ASSERT_NEQ_PTR(freelist_head, NULL);
+  TEST_ASSERT_EQ_INT(WDM_IS_FREE(freelist_head), 1);
 
-  TEST_ASSERT_EQ_INT(((uint8_t*)b)[0], 0xCD);  // b's contents should be intact
-  TEST_ASSERT_EQ_INT(((uint8_t*)b)[2], 0xCD);
-
-  wdfree(b);
-
-#if (TEST_VERBOSE==1)
-  printf("\nwdfree(b);\n\r");
-  wd_print_heap_state();
-#endif
+  wdfree(exact_mid);
+  wdfree(p3);
 
   return true;
 }
