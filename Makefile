@@ -218,8 +218,11 @@ $(foreach t,$(VALID_TESTS),$(eval $(call TEST_RULES,$(t))))
 
 test-run: test-gen
 	@$(foreach t,$(VALID_TESTS), \
-		(out=$$($(TEST_BUILD_DIR)/$(t)/test_$(t).elf 2>&1); printf '%s\n' "$$out") &) \
-	wait
+		$(TEST_BUILD_DIR)/$(t)/test_$(t).elf > /tmp/test_out_$(t).txt 2>&1 &) \
+	wait; \
+	$(foreach t,$(VALID_TESTS), \
+		cat /tmp/test_out_$(t).txt; \
+		rm -f /tmp/test_out_$(t).txt;)
 
 # For building the proper source files for unit testing
 $(TEST_BUILD_DIR)/kernel/%.o: kernel/%.c

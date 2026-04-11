@@ -29,7 +29,7 @@ class FuncDefVisitor(c_ast.NodeVisitor):
 
     def finalize(self, test_suite_name):
         entries = ", ".join(
-            f"{{{self.setup}, {name}, \"{name}\"}}" for name in self.test_suite
+            f"{{{self.setup if self.setup else "NULL"}, {name}, \"{name}\"}}" for name in self.test_suite
         )
         test_suite_struct = (
             f'{{ "{test_suite_name}", '

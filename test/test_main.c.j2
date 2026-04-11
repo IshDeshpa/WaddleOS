@@ -17,7 +17,7 @@ int run_test_suite(test_suite_t *t){
   for(int i=0; i<t->count; i++){
     printf(BLUE "===============\n\r%s TEST\n\r===============\n\r" NOCOLOR, t->suite[i].test_name);
     
-    t->suite[i].setup_func();
+    if(t->suite[i].setup_func) t->suite[i].setup_func();
     bool ret = t->suite[i].test_func();
     if(ret){
       printf(GREEN "[PASS] %s " BLUE "TEST\n\r" NOCOLOR, t->suite[i].test_name);     
