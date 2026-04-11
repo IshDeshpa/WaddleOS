@@ -73,7 +73,7 @@ endef
 empty :=
 space := $(empty) $(empty)
 VALID_TEST_SRCS:=$(foreach d,$(VALID_TEST_DIRS),$(call GET_TEST_SRCS,$d))
-TEST_ELF_NAME:=$(subst $(space),_,$(strip $(VALID_TESTS)))
+#TEST_ELF_NAME:=$(subst $(space),_,$(strip $(VALID_TESTS)))
 
 GDB_TEST ?= 0
 ifeq ($(GDB_TEST),1)
@@ -191,22 +191,35 @@ $(LOADER_BUILD_DIR)/boot1.bin: $(LOADER_BUILD_DIR)/boot1.elf $(BOOT1_OBJS) $(BIN
 	$(OBJCOPY) -O binary --set-section-flags .rmode=alloc,load,contents  --strip-all $< $@
 
 # Test
-test: $(TEST_BUILD_DIR)/$(TEST_ELF_NAME).elf
-	@$(TEST_GDB) $(TEST_BUILD_DIR)/$(TEST_ELF_NAME).elf 
+test-gen: $(foreach t,$(VALID_TESTS),$(TEST_BUILD_DIR)/$(t)/test_$(t).elf)
+	@echo "All tests built"
 
-$(TEST_BUILD_DIR)/$(TEST_ELF_NAME).elf: $(TEST_BUILD_DIR)/gen/test_main.c $(VALID_TEST_SRCS)
-	@mkdir -p $(@D)
-	$(HOST_CC) $(TEST_CFLAGS) $(TEST_C_INCS) $(VALID_TEST_FILES) $(VALID_TEST_SRCS) $< -o $@
+define TEST_RULES
+TEST_DIR_$(1) := test/$(1)
+TEST_FILES_$(1) := $$(wildcard test/$(1)/*.c)
+TEST_SRCS_$(1) := $$(call GET_TEST_SRCS,test/$(1))
 
-$(TEST_BUILD_DIR)/gen/test_main.c: $(VALID_TEST_FILES) test/test_main.c.j2
-	@mkdir -p $(@D)
-	@tmp_file=$@.tmp; \
-	uv run python3 test/test_gen.py --cflags '$(TEST_CFLAGS) $(TEST_C_INCS)' --test_sources $(VALID_TEST_FILES) > $$tmp_file; \
-	if [ -s $$tmp_file ]; then \
-	    mv $$tmp_file $@; \
+$(TEST_BUILD_DIR)/$(1)/test_$(1).elf: $(TEST_BUILD_DIR)/$(1)/gen/test_main.c $$(TEST_SRCS_$(1))
+	@mkdir -p $$(@D)
+	$(HOST_CC) $(TEST_CFLAGS) $(TEST_C_INCS) $$(TEST_FILES_$(1)) $$(TEST_SRCS_$(1)) $$< -o $$@
+
+$(TEST_BUILD_DIR)/$(1)/gen/test_main.c: $$(TEST_FILES_$(1)) test/test_main.c.j2
+	@mkdir -p $$(@D)
+	@tmp_file=$$@.tmp; \
+	uv run python3 test/test_gen.py --cflags '$(TEST_CFLAGS) $(TEST_C_INCS)' --test_source $$(TEST_FILES_$(1)) > $$$$tmp_file; \
+	if [ -s $$$$tmp_file ]; then \
+	    mv $$$$tmp_file $$@; \
 	else \
-	    rm -f $$tmp_file; \
+	    rm -f $$$$tmp_file; \
 	fi
+endef
+
+$(foreach t,$(VALID_TESTS),$(eval $(call TEST_RULES,$(t))))
+
+test-run: test-gen
+	@$(foreach t,$(VALID_TESTS), \
+		(out=$$($(TEST_BUILD_DIR)/$(t)/test_$(t).elf 2>&1); printf '%s\n' "$$out") &) \
+	wait
 
 # For building the proper source files for unit testing
 $(TEST_BUILD_DIR)/kernel/%.o: kernel/%.c

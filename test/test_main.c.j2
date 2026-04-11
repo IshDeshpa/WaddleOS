@@ -10,9 +10,7 @@ typedef struct {
   int count;
 } test_suite_t;
 
-{{all_test_suite_arrs}}
-
-static const test_suite_t test_suites[{{num_test_suites}}] = { {{all_test_suite_structs}} };
+static const test_suite_t test_suite = {{test_suite}};
 
 int run_test_suite(test_suite_t *t){
   int num_successes = 0;
@@ -34,17 +32,13 @@ int run_test_suite(test_suite_t *t){
 }
 
 int main(){
-  for(int i=0; i<{{num_test_suites}}; i++){
-    test_suite_t t = test_suites[i];
+  printf(MAGENTA "===============\n\r%s SUITE\n\r===============\n\r" NOCOLOR, test_suite.name);
+  
+  int num_successes = run_test_suite(&test_suite);
 
-    printf(MAGENTA "===============\n\r%s SUITE\n\r===============\n\r" NOCOLOR, t.name);
-    
-    int num_successes = run_test_suite(&test_suites[i]);
-
-    if(num_successes == t.count){
-      printf(GREEN "[PASS] %d/%d %s " MAGENTA "SUITE\n\r" NOCOLOR, num_successes, t.count, t.name);
-    } else {
-      printf(RED "[FAIL] %d/%d %s " MAGENTA "SUITE\n\r" NOCOLOR, num_successes, t.count, t.name);
-    }
+  if(num_successes == test_suite.count){
+    printf(GREEN "[PASS] %d/%d %s " MAGENTA "SUITE\n\r" NOCOLOR, num_successes, test_suite.count, test_suite.name);
+  } else {
+    printf(RED "[FAIL] %d/%d %s " MAGENTA "SUITE\n\r" NOCOLOR, num_successes, test_suite.count, test_suite.name);
   }
 }
