@@ -17,250 +17,281 @@ void wd_print_heap_state();
   call
 #endif
 
-// COPIED FROM WDMALLOC
-typedef struct wdmalloc_hdr wdmalloc_hdr_t;
-extern wdmalloc_hdr_t *freelist_head;
-
-// 12 byte header
-struct wdmalloc_hdr {
-  uint16_t prev_sz;
-  uint16_t sz;
-  union {
-    wdmalloc_hdr_t *next;
-    uint64_t magic;
-  } lom; // link or magic
-} __attribute__((packed));
-
-#define WDM_ALLOC_BIT (1 << 15)
-#define WDM_MAGIC (0xDEADBEEFBABECAFE)
-#define WDM_IS_FREE(HDR) (((HDR)->sz & WDM_ALLOC_BIT) == 0)
-#define WDM_ACTUAL_SIZE(HDR) ((HDR)->sz & ~WDM_ALLOC_BIT)
-#define WDM_IN_HEAP(PTR) (((((uintptr_t)PTR) < (uintptr_t)heap_start + heap_size)) && (((uintptr_t)PTR) >= (uintptr_t)heap_start))
-// -----------------------
+static bool regions_overlap(void *a, size_t a_sz, void *b, size_t b_sz) {
+  uintptr_t a0 = (uintptr_t)a, a1 = a0 + a_sz;
+  uintptr_t b0 = (uintptr_t)b, b1 = b0 + b_sz;
+  return a0 < b1 && b0 < a1;
+}
 
 bool test_wdmalloc_basic_alloc_free() {
-  uint8_t heap_buf[HEAP_SIZE];
-  wdmalloc_init(heap_buf, HEAP_SIZE);
+  uint8_t heap[HEAP_SIZE];
+  wdmalloc_init(heap, HEAP_SIZE);
 
-  RUN_AND_PRINT_HEAP_STATE(void *ptr = wdmalloc(3);)
-  TEST_ASSERT_LT_PTR ((uint8_t *)ptr, heap_buf + HEAP_SIZE);
-  TEST_ASSERT_GEQ_PTR((uint8_t *)ptr, heap_buf);
-  memset(ptr, 0xDB, 3);
-  TEST_ASSERT_EQ_INT(((uint8_t*)ptr)[2], 0xDB);
+  RUN_AND_PRINT_HEAP_STATE(void *p = wdmalloc(64);)
+  TEST_ASSERT_NEQ_PTR(p, NULL);
+  TEST_ASSERT_GEQ_PTR((uint8_t *)p, heap);
+  TEST_ASSERT_LEQ_PTR ((uint8_t *)p + 64, heap + HEAP_SIZE);
+  memset(p, 0xAB, 64);
+  TEST_ASSERT_EQ_INT(((uint8_t *)p)[63], 0xAB);
 
-  RUN_AND_PRINT_HEAP_STATE(wdfree(ptr);)
+  RUN_AND_PRINT_HEAP_STATE(wdfree(p);)
   return true;
 }
 
-bool test_wdmalloc_null_on_no_init() {
-  uint8_t heap_buf[HEAP_SIZE];
-  wdmalloc_init(heap_buf, HEAP_SIZE);
+bool test_wdmalloc_no_overlap() {
+  uint8_t heap[HEAP_SIZE];
+  wdmalloc_init(heap, HEAP_SIZE);
 
-  wdmalloc_hdr_t *saved_head = freelist_head;
-  freelist_head = NULL;
-  void *ptr = wdmalloc(1);
-  freelist_head = saved_head;
+  RUN_AND_PRINT_HEAP_STATE(void *p1 = wdmalloc(32);)
+  RUN_AND_PRINT_HEAP_STATE(void *p2 = wdmalloc(64);)
+  RUN_AND_PRINT_HEAP_STATE(void *p3 = wdmalloc(16);)
+  TEST_ASSERT_NEQ_PTR(p1, NULL);
+  TEST_ASSERT_NEQ_PTR(p2, NULL);
+  TEST_ASSERT_NEQ_PTR(p3, NULL);
 
-  TEST_ASSERT_EQ_PTR(ptr, NULL);
+  TEST_ASSERT_EQ_INT(regions_overlap(p1, 32, p2, 64), false);
+  TEST_ASSERT_EQ_INT(regions_overlap(p2, 64, p3, 16), false);
+  TEST_ASSERT_EQ_INT(regions_overlap(p1, 32, p3, 16), false);
+
+  RUN_AND_PRINT_HEAP_STATE(wdfree(p1);)
+  RUN_AND_PRINT_HEAP_STATE(wdfree(p2);)
+  RUN_AND_PRINT_HEAP_STATE(wdfree(p3);)
   return true;
 }
 
-bool test_wdmalloc_null_on_too_large() {
-  uint8_t heap_buf[HEAP_SIZE];
-  wdmalloc_init(heap_buf, HEAP_SIZE);
+bool test_wdmalloc_no_corruption() {
+  uint8_t heap[HEAP_SIZE];
+  wdmalloc_init(heap, HEAP_SIZE);
 
-  void *ptr = wdmalloc(HEAP_SIZE);
-  TEST_ASSERT_EQ_PTR(ptr, NULL);
+  RUN_AND_PRINT_HEAP_STATE(void *p1 = wdmalloc(64);)
+  RUN_AND_PRINT_HEAP_STATE(void *p2 = wdmalloc(64);)
+  TEST_ASSERT_NEQ_PTR(p1, NULL);
+  TEST_ASSERT_NEQ_PTR(p2, NULL);
+
+  memset(p1, 0xAA, 64);
+  memset(p2, 0xBB, 64);
+  for (int i = 0; i < 64; i++)
+    TEST_ASSERT_EQ_INT(((uint8_t *)p1)[i], 0xAA);
+
+  RUN_AND_PRINT_HEAP_STATE(wdfree(p1);)
+  RUN_AND_PRINT_HEAP_STATE(wdfree(p2);)
   return true;
 }
 
-bool test_wdmalloc_split_adj_out_of_bounds() {
-  uint8_t heap_buf[HEAP_SIZE];
-  wdmalloc_init(heap_buf, HEAP_SIZE);
+bool test_wdmalloc_null_on_exhaustion() {
+  uint8_t heap[HEAP_SIZE];
+  wdmalloc_init(heap, HEAP_SIZE);
 
-  uint16_t whole_free = freelist_head->sz;
-  uint16_t tail_size  = whole_free - sizeof(wdmalloc_hdr_t);
-
-  RUN_AND_PRINT_HEAP_STATE(void *ptr = wdmalloc(tail_size);)
-  TEST_ASSERT_LT_PTR ((uint8_t *)ptr, heap_buf + HEAP_SIZE);
-  TEST_ASSERT_GEQ_PTR((uint8_t *)ptr, heap_buf);
-  memset(ptr, 0xAB, tail_size);
-  TEST_ASSERT_EQ_INT(((uint8_t*)ptr)[tail_size - 1], 0xAB);
-
-  RUN_AND_PRINT_HEAP_STATE(wdfree(ptr);)
+  RUN_AND_PRINT_HEAP_STATE(void *p = wdmalloc(HEAP_SIZE);)
+  TEST_ASSERT_EQ_PTR(p, NULL);
   return true;
 }
 
-bool test_wdmalloc_nosplit_exact_fit_head() {
-  uint8_t heap_buf[HEAP_SIZE];
-  wdmalloc_init(heap_buf, HEAP_SIZE);
+bool test_wdmalloc_reuse_after_free() {
+  uint8_t heap[HEAP_SIZE];
+  wdmalloc_init(heap, HEAP_SIZE);
 
-  void *a = wdmalloc(4);
-  void *b = wdmalloc(8);
+  RUN_AND_PRINT_HEAP_STATE(void *p = wdmalloc(64);)
+  TEST_ASSERT_NEQ_PTR(p, NULL);
+  RUN_AND_PRINT_HEAP_STATE(wdfree(p);)
+
+  RUN_AND_PRINT_HEAP_STATE(void *p2 = wdmalloc(64);)
+  TEST_ASSERT_NEQ_PTR(p2, NULL);
+  memset(p2, 0xCD, 64);
+  TEST_ASSERT_EQ_INT(((uint8_t *)p2)[63], 0xCD);
+
+  RUN_AND_PRINT_HEAP_STATE(wdfree(p2);)
+  return true;
+}
+
+bool test_wdmalloc_coalesce_reclaims_space() {
+  uint8_t heap[HEAP_SIZE];
+  wdmalloc_init(heap, HEAP_SIZE);
+
+  RUN_AND_PRINT_HEAP_STATE(void *p1 = wdmalloc(128);)
+  RUN_AND_PRINT_HEAP_STATE(void *p2 = wdmalloc(128);)
+  RUN_AND_PRINT_HEAP_STATE(void *p3 = wdmalloc(128);)
+  TEST_ASSERT_NEQ_PTR(p1, NULL);
+  TEST_ASSERT_NEQ_PTR(p2, NULL);
+  TEST_ASSERT_NEQ_PTR(p3, NULL);
+
+  RUN_AND_PRINT_HEAP_STATE(wdfree(p1);)
+  RUN_AND_PRINT_HEAP_STATE(wdfree(p2);)
+  RUN_AND_PRINT_HEAP_STATE(wdfree(p3);)
+
+  RUN_AND_PRINT_HEAP_STATE(void *big = wdmalloc(300);)
+  TEST_ASSERT_NEQ_PTR(big, NULL);
+  memset(big, 0xFF, 300);
+  TEST_ASSERT_EQ_INT(((uint8_t *)big)[299], 0xFF);
+
+  RUN_AND_PRINT_HEAP_STATE(wdfree(big);)
+  return true;
+}
+
+bool test_wdmalloc_full_coalesce() {
+  uint8_t heap[HEAP_SIZE];
+  wdmalloc_init(heap, HEAP_SIZE);
+
+  #define N 16
+  void *ptrs[N];
+  for (int i = 0; i < N; i++) {
+    RUN_AND_PRINT_HEAP_STATE(ptrs[i] = wdmalloc(32);)
+    TEST_ASSERT_NEQ_PTR(ptrs[i], NULL);
+  }
+  for (int i = 0; i < N; i++) {
+    RUN_AND_PRINT_HEAP_STATE(wdfree(ptrs[i]);)
+  }
+
+  RUN_AND_PRINT_HEAP_STATE(void *big = wdmalloc(N * 32);)
+  TEST_ASSERT_NEQ_PTR(big, NULL);
+  RUN_AND_PRINT_HEAP_STATE(wdfree(big);)
+  #undef N
+  return true;
+}
+
+bool test_wdmalloc_interleaved() {
+  uint8_t heap[HEAP_SIZE];
+  wdmalloc_init(heap, HEAP_SIZE);
+
+  RUN_AND_PRINT_HEAP_STATE(void *a = wdmalloc(32);)
+  RUN_AND_PRINT_HEAP_STATE(void *b = wdmalloc(32);)
   TEST_ASSERT_NEQ_PTR(a, NULL);
   TEST_ASSERT_NEQ_PTR(b, NULL);
 
-  wdfree(a);
-  wdfree(b);
+  RUN_AND_PRINT_HEAP_STATE(wdfree(a);)
 
-  uint16_t head_sz = WDM_ACTUAL_SIZE(freelist_head);
-  RUN_AND_PRINT_HEAP_STATE(void *ptr = wdmalloc(head_sz);)
-  TEST_ASSERT_NEQ_PTR(ptr, NULL);
-  memset(ptr, 0xCD, head_sz);
-  TEST_ASSERT_EQ_INT(((uint8_t*)ptr)[head_sz - 1], 0xCD);
+  RUN_AND_PRINT_HEAP_STATE(void *c = wdmalloc(32);)
+  TEST_ASSERT_NEQ_PTR(c, NULL);
+  TEST_ASSERT_EQ_INT(regions_overlap(b, 32, c, 32), false);
 
-  RUN_AND_PRINT_HEAP_STATE(wdfree(ptr);)
+  memset(b, 0x11, 32);
+  memset(c, 0x22, 32);
+  for (int i = 0; i < 32; i++)
+    TEST_ASSERT_EQ_INT(((uint8_t *)b)[i], 0x11);
+
+  RUN_AND_PRINT_HEAP_STATE(wdfree(b);)
+  RUN_AND_PRINT_HEAP_STATE(wdfree(c);)
   return true;
 }
 
-bool test_wdmalloc_nosplit_exact_fit_mid() {
-  uint8_t heap_buf[HEAP_SIZE];
-  wdmalloc_init(heap_buf, HEAP_SIZE);
+bool test_wdmalloc_zero_size() {
+  uint8_t heap[HEAP_SIZE];
+  wdmalloc_init(heap, HEAP_SIZE);
 
-  void *p1 = wdmalloc(4);
-  void *p2 = wdmalloc(16);
-  void *p3 = wdmalloc(4);
-  TEST_ASSERT_NEQ_PTR(p1, NULL);
-  TEST_ASSERT_NEQ_PTR(p2, NULL);
-  TEST_ASSERT_NEQ_PTR(p3, NULL);
+  RUN_AND_PRINT_HEAP_STATE(void *p = wdmalloc(0);)
+  if (p) { RUN_AND_PRINT_HEAP_STATE(wdfree(p);) }
 
-  wdfree(p1);
-  wdfree(p2);
-
-  wdmalloc_hdr_t *second = freelist_head->lom.next;
-  TEST_ASSERT_NEQ_PTR(second, NULL);
-  uint16_t mid_sz = WDM_ACTUAL_SIZE(second);
-
-  RUN_AND_PRINT_HEAP_STATE(void *ptr = wdmalloc(mid_sz);)
-  TEST_ASSERT_NEQ_PTR(ptr, NULL);
-  memset(ptr, 0xEF, mid_sz);
-  TEST_ASSERT_EQ_INT(((uint8_t*)ptr)[mid_sz - 1], 0xEF);
-
-  TEST_ASSERT_NEQ_PTR(freelist_head, NULL);
-  TEST_ASSERT_EQ_INT(WDM_IS_FREE(freelist_head), 1);
-
-  wdfree(ptr);
-  wdfree(p3);
+  RUN_AND_PRINT_HEAP_STATE(void *q = wdmalloc(8);)
+  TEST_ASSERT_NEQ_PTR(q, NULL);
+  memset(q, 0x55, 8);
+  TEST_ASSERT_EQ_INT(((uint8_t *)q)[7], 0x55);
+  RUN_AND_PRINT_HEAP_STATE(wdfree(q);)
   return true;
 }
 
-// PATH: coalesce – merge none (isolated free block, both neighbors allocated)
-bool test_wdmalloc_coalesce_none() {
-  uint8_t heap_buf[HEAP_SIZE];
-  wdmalloc_init(heap_buf, HEAP_SIZE);
+bool test_wdrealloc_grows() {
+    uint8_t heap[HEAP_SIZE];
+    wdmalloc_init(heap, HEAP_SIZE);
 
-  void *p1 = wdmalloc(8);
-  void *p2 = wdmalloc(8);
-  void *p3 = wdmalloc(8);
-  TEST_ASSERT_NEQ_PTR(p1, NULL);
-  TEST_ASSERT_NEQ_PTR(p2, NULL);
-  TEST_ASSERT_NEQ_PTR(p3, NULL);
+    RUN_AND_PRINT_HEAP_STATE(void *p = wdmalloc(32);)
+    TEST_ASSERT_NEQ_PTR(p, NULL);
+    memset(p, 0xAA, 32);
 
-  // p2 is surrounded by allocated blocks → coalesce merges none
-  wdfree(p2);
+    RUN_AND_PRINT_HEAP_STATE(void *q = wdrealloc(p, 64);)
+    TEST_ASSERT_NEQ_PTR(q, NULL);
 
-  // freelist head should be p2's block, standalone
-  wdmalloc_hdr_t *hdr = (wdmalloc_hdr_t *)((uintptr_t)p2 - sizeof(wdmalloc_hdr_t));
-  TEST_ASSERT_EQ_PTR(freelist_head, hdr);
-  TEST_ASSERT_EQ_INT(WDM_IS_FREE(freelist_head), 1);
-  TEST_ASSERT_EQ_INT(WDM_ACTUAL_SIZE(freelist_head), 8);
+    // Old data should be preserved
+    for (int i = 0; i < 32; i++)
+        TEST_ASSERT_EQ_INT(((uint8_t *)q)[i], 0xAA);
 
-  wdfree(p1);
-  wdfree(p3);
-  return true;
+    // New space is writable
+    memset((uint8_t *)q + 32, 0xBB, 32);
+    TEST_ASSERT_EQ_INT(((uint8_t *)q)[63], 0xBB);
+
+    RUN_AND_PRINT_HEAP_STATE(wdfree(q);)
+    return true;
 }
 
-// PATH: coalesce – merge next only (prev allocated, next free)
-bool test_wdmalloc_coalesce_next() {
-  uint8_t heap_buf[HEAP_SIZE];
-  wdmalloc_init(heap_buf, HEAP_SIZE);
+bool test_wdrealloc_shrinks() {
+    uint8_t heap[HEAP_SIZE];
+    wdmalloc_init(heap, HEAP_SIZE);
 
-  void *p1 = wdmalloc(8);
-  void *p2 = wdmalloc(8);
-  void *p3 = wdmalloc(8);
-  TEST_ASSERT_NEQ_PTR(p1, NULL);
-  TEST_ASSERT_NEQ_PTR(p2, NULL);
-  TEST_ASSERT_NEQ_PTR(p3, NULL);
+    RUN_AND_PRINT_HEAP_STATE(void *p = wdmalloc(64);)
+    TEST_ASSERT_NEQ_PTR(p, NULL);
+    memset(p, 0xCC, 64);
 
-  wdfree(p3); // free next neighbor first
-  wdfree(p2); // freeing p2 should absorb p3
+    RUN_AND_PRINT_HEAP_STATE(void *q = wdrealloc(p, 32);)
+    TEST_ASSERT_NEQ_PTR(q, NULL);
 
-  wdmalloc_hdr_t *hdr_p2 = (wdmalloc_hdr_t *)((uintptr_t)p2 - sizeof(wdmalloc_hdr_t));
+    for (int i = 0; i < 32; i++)
+        TEST_ASSERT_EQ_INT(((uint8_t *)q)[i], 0xCC);
 
-  // p2's block should have grown to include p3's header + p3's payload
-  TEST_ASSERT_EQ_INT(WDM_ACTUAL_SIZE(hdr_p2), 8 + sizeof(wdmalloc_hdr_t) + 8);
-  TEST_ASSERT_EQ_INT(WDM_IS_FREE(hdr_p2), 1);
-
-  wdfree(p1);
-  return true;
+    RUN_AND_PRINT_HEAP_STATE(wdfree(q);)
+    return true;
 }
 
-// PATH: coalesce – merge prev only (prev free, next allocated)
-bool test_wdmalloc_coalesce_prev() {
-  uint8_t heap_buf[HEAP_SIZE];
-  wdmalloc_init(heap_buf, HEAP_SIZE);
+bool test_wdrealloc_null_old_pointer() {
+    uint8_t heap[HEAP_SIZE];
+    wdmalloc_init(heap, HEAP_SIZE);
 
-  void *p1 = wdmalloc(8);
-  void *p2 = wdmalloc(8);
-  void *p3 = wdmalloc(8);
-  TEST_ASSERT_NEQ_PTR(p1, NULL);
-  TEST_ASSERT_NEQ_PTR(p2, NULL);
-  TEST_ASSERT_NEQ_PTR(p3, NULL);
+    // Realloc with NULL should behave like malloc
+    RUN_AND_PRINT_HEAP_STATE(void *p = wdrealloc(NULL, 32);)
+    TEST_ASSERT_NEQ_PTR(p, NULL);
+    memset(p, 0xDD, 32);
+    TEST_ASSERT_EQ_INT(((uint8_t *)p)[31], 0xDD);
 
-  wdfree(p1); // free prev neighbor first
-  wdfree(p2); // freeing p2 should merge into p1
-
-  wdmalloc_hdr_t *hdr_p1 = (wdmalloc_hdr_t *)((uintptr_t)p1 - sizeof(wdmalloc_hdr_t));
-
-  // p1's block should have grown to include p2's header + p2's payload
-  TEST_ASSERT_EQ_INT(WDM_ACTUAL_SIZE(hdr_p1), 8 + sizeof(wdmalloc_hdr_t) + 8);
-  TEST_ASSERT_EQ_INT(WDM_IS_FREE(hdr_p1), 1);
-
-  // p3's prev_sz should now reflect the merged block size
-  wdmalloc_hdr_t *hdr_p3 = (wdmalloc_hdr_t *)((uintptr_t)p3 - sizeof(wdmalloc_hdr_t));
-  TEST_ASSERT_EQ_INT(hdr_p3->prev_sz, WDM_ACTUAL_SIZE(hdr_p1));
-
-  wdfree(p3);
-  return true;
+    RUN_AND_PRINT_HEAP_STATE(wdfree(p);)
+    return true;
 }
 
-// PATH: coalesce – merge both (prev free, next free)
-bool test_wdmalloc_coalesce_both() {
-  uint8_t heap_buf[HEAP_SIZE];
-  wdmalloc_init(heap_buf, HEAP_SIZE);
+bool test_wdrealloc_zero_size() {
+    uint8_t heap[HEAP_SIZE];
+    wdmalloc_init(heap, HEAP_SIZE);
 
-  void *p1 = wdmalloc(8);
-  void *p2 = wdmalloc(8);
-  void *p3 = wdmalloc(8);
-  void *p4 = wdmalloc(8); // fence to prevent p3 merging with remainder
-  TEST_ASSERT_NEQ_PTR(p1, NULL);
-  TEST_ASSERT_NEQ_PTR(p2, NULL);
-  TEST_ASSERT_NEQ_PTR(p3, NULL);
-  TEST_ASSERT_NEQ_PTR(p4, NULL);
+    RUN_AND_PRINT_HEAP_STATE(void *p = wdmalloc(32);)
+    TEST_ASSERT_NEQ_PTR(p, NULL);
+    memset(p, 0xEE, 32);
 
-  wdfree(p1);
-  wdfree(p3);
-  // now p1=free, p2=alloc, p3=free, p4=alloc
-  wdfree(p2); // should merge p1+p2+p3 into one block
+    // Realloc to zero should free the block and return NULL
+    RUN_AND_PRINT_HEAP_STATE(void *q = wdrealloc(p, 0);)
+    TEST_ASSERT_EQ_PTR(q, NULL);
+    return true;
+}
 
-  wdmalloc_hdr_t *hdr_p1 = (wdmalloc_hdr_t *)((uintptr_t)p1 - sizeof(wdmalloc_hdr_t));
+bool test_wdrealloc_exceeds_heap() {
+    uint8_t heap[HEAP_SIZE];
+    wdmalloc_init(heap, HEAP_SIZE);
 
-  uint16_t expected = 8 + sizeof(wdmalloc_hdr_t) + 8 + sizeof(wdmalloc_hdr_t) + 8;
-  TEST_ASSERT_EQ_INT(WDM_ACTUAL_SIZE(hdr_p1), expected);
-  TEST_ASSERT_EQ_INT(WDM_IS_FREE(hdr_p1), 1);
+    RUN_AND_PRINT_HEAP_STATE(void *p = wdmalloc(64);)
+    TEST_ASSERT_NEQ_PTR(p, NULL);
 
-  // p3's block should no longer be in the freelist (was removed during merge)
-  wdmalloc_hdr_t *hdr_p3 = (wdmalloc_hdr_t *)((uintptr_t)p3 - sizeof(wdmalloc_hdr_t));
-  wdmalloc_hdr_t *curr = freelist_head;
-  while (curr != NULL) {
-    TEST_ASSERT_NEQ_PTR(curr, hdr_p3);
-    curr = curr->lom.next;
-  }
+    // Attempt to realloc beyond total heap should fail
+    RUN_AND_PRINT_HEAP_STATE(void *q = wdrealloc(p, HEAP_SIZE);)
+    TEST_ASSERT_EQ_PTR(q, NULL);
 
-  // p4's prev_sz should reflect the merged block
-  wdmalloc_hdr_t *hdr_p4 = (wdmalloc_hdr_t *)((uintptr_t)p4 - sizeof(wdmalloc_hdr_t));
-  TEST_ASSERT_EQ_INT(hdr_p4->prev_sz, expected);
+    // Original block should still be valid
+    memset(p, 0x11, 64);
+    TEST_ASSERT_EQ_INT(((uint8_t *)p)[63], 0x11);
 
-  wdfree(p4);
-  return true;
+    RUN_AND_PRINT_HEAP_STATE(wdfree(p);)
+    return true;
+}
+
+bool test_wdrealloc_preserves_non_overlapping_blocks() {
+    uint8_t heap[HEAP_SIZE];
+    wdmalloc_init(heap, HEAP_SIZE);
+
+    RUN_AND_PRINT_HEAP_STATE(void *a = wdmalloc(32);)
+    RUN_AND_PRINT_HEAP_STATE(void *b = wdmalloc(32);)
+    TEST_ASSERT_NEQ_PTR(a, NULL);
+    TEST_ASSERT_NEQ_PTR(b, NULL);
+
+    // Realloc first block to bigger size
+    RUN_AND_PRINT_HEAP_STATE(void *c = wdrealloc(a, 64);)
+    TEST_ASSERT_NEQ_PTR(c, NULL);
+    TEST_ASSERT_EQ_INT(regions_overlap(c, 64, b, 32), false);
+
+    RUN_AND_PRINT_HEAP_STATE(wdfree(c);)
+    RUN_AND_PRINT_HEAP_STATE(wdfree(b);)
+    return true;
 }

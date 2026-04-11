@@ -151,6 +151,7 @@ static void coalesce(wdmalloc_hdr_t *hdr){
   } else if(next_nghbr && WDM_IS_FREE(next_nghbr)){
     // Merge next
     hdr->sz += sizeof(wdmalloc_hdr_t) + next_nghbr->sz;
+
     if(next_nghbr->lom.next) hdr->lom.next = next_nghbr->lom.next;
     else hdr->lom.next = NULL;
 
@@ -181,6 +182,7 @@ static void coalesce(wdmalloc_hdr_t *hdr){
 
 void *wdrealloc(void* ptr, uint16_t size){
   if(freelist_head == NULL || heap_start == NULL || heap_size == 0) return NULL;
+  if(ptr == NULL) return wdmalloc(size);
 
   wdmalloc_hdr_t *hdr = (wdmalloc_hdr_t *)((uintptr_t)ptr - sizeof(wdmalloc_hdr_t));
 
