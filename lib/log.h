@@ -38,8 +38,7 @@ log_level_color(log_level_t level)
 static inline void log(log_level_t level, char *str, ...){
   va_list args;
   va_start(args, str);
-
-  if(level >= LOG_LEVEL){
+  if(level <= LOG_LEVEL){
     printf(log_level_color(level));
     vprintf(str, args);
     printf(log_level_color(LOG_NONE));

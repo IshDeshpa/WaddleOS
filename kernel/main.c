@@ -1,12 +1,12 @@
 #include "idt.h"
 #include "paging.h"
-#include "malloc.h"
 #include "term.h"
 #include "serial.h"
 #include "printf.h"
 #include "interrupts.h"
 #include "pic.h"
 #include "pit.h"
+#include "wdmalloc.h"
 #include "utils.h"
 #include "multiboot2.h"
 
@@ -32,15 +32,17 @@ void kernel_main(){
 
   // Memory init
   paging_init(); // paging structures
-  // malloc_init(paging_get_pages(KERNEL_HEAP_PAGES, 0), KERNEL_HEAP_PAGES*PAGE_SIZE);
-
-  pit_init(100); // 100 hz
-  
-  interrupts_enable(); // -------
-
+  //wdmalloc_init(paging_get_pages(KERNEL_HEAP_PAGES, 0), KERNEL_HEAP_PAGES*PAGE_SIZE);
+  //
+  // pit_init(100); // 100 hz
+  //
+  // interrupts_enable(); 
+  //
   for(int i=0; i<100; i++){
     printf("Hello World! %s %d %x\n\r", "abc", i, i);
 
     for(int j=0; j<50000000; j++); // delay
   }
+
+  while(1){}
 }

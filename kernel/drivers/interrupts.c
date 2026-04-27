@@ -4,8 +4,8 @@
 #include "pic.h"
 #include "utils.h"
 
-#define LOG_LEVEL 0
-#define LOG_ENABLE 0
+#define LOG_LEVEL 6
+#define LOG_ENABLE 1
 #include "log.h"
 
 static void *exc_stubs[32] = {

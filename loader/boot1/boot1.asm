@@ -354,10 +354,10 @@ _prt16:
 
 
 .section .data
-fb0: .ascii "Fail boot1\n\r\0"
-sb0: .ascii "Success boot1\n\r\0"
-a2: .ascii "A20 Gate Enable!\n\r\0"
-pm: .ascii "Protected Mode Enable!\n\r\0"
+fb0: .ascii "Fail boot1\n\0"
+sb0: .ascii "Success boot1\n\0"
+a2: .ascii "A20 Gate Enable!\n\0"
+pm: .ascii "Protected Mode Enable!\n\0"
 
 .align 4
 dap:

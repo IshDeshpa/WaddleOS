@@ -279,13 +279,13 @@ trace:
 	qemu-system-$(QEMU_VER) $(QEMU_FLAGS) -drive format=raw,file=build/disk.img -serial $(QEMU_SERIAL_OUT) -d int,cpu_reset -D qemu.log -no-reboot
 
 dump-boot0: $(LOADER_BUILD_DIR)/boot0.o $(BINUTILS_STAMP)
-	$(OBJDUMP) -d $< -m i8086
+	$(OBJDUMP) -d -t $< -m i8086
 
 dump-boot1: $(LOADER_BUILD_DIR)/boot1.elf $(BINUTILS_STAMP)
-	$(OBJDUMP) -d $<
+	$(OBJDUMP) -d -t $<
 
 dump-kernel: $(KERNEL_BUILD_DIR)/kernel.elf $(BINUTILS_STAMP)
-	$(OBJDUMP) -d $<
+	$(OBJDUMP) -d -t $<
 
 clean:
 	-rm -rf $(KERNEL_BUILD_DIR) $(LOADER_BUILD_DIR) $(TEST_BUILD_DIR)

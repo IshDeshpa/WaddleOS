@@ -1,4 +1,6 @@
 #include "wdmalloc.h"
+#include "string.h"
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 #include "utils.h"
