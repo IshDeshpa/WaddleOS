@@ -32,12 +32,12 @@ void kernel_main(){
 
   // Memory init
   paging_init(); // paging structures
-  //wdmalloc_init(paging_get_pages(KERNEL_HEAP_PAGES, 0), KERNEL_HEAP_PAGES*PAGE_SIZE);
-  //
-  // pit_init(100); // 100 hz
-  //
-  // interrupts_enable(); 
-  //
+  wdmalloc_init(paging_get_pages(KERNEL_HEAP_PAGES, 0), KERNEL_HEAP_PAGES*PAGE_SIZE);
+  
+  pit_init(100); // 100 hz
+  
+  interrupts_enable(); 
+  
   for(int i=0; i<100; i++){
     printf("Hello World! %s %d %x\n\r", "abc", i, i);
 

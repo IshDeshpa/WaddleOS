@@ -8,8 +8,8 @@
 #include "utils.h"
 #include "multiboot_parser.h"
 
-#define LOG_LEVEL 5
-#define LOG_ENABLE 1
+#define LOG_LEVEL 6
+#define LOG_ENABLE 0
 #include "log.h"
 
 static struct multiboot_mmap_entry memory_map[10];
