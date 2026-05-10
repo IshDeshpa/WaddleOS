@@ -36,10 +36,12 @@ SECTIONS{
     *(.bss*)
     _bss_end = .;
 
-    . = ALIGN(16);
+    . = ALIGN(4096);
     _stack_bottom = .;
-    . += 16K;
+    . += 4K;
     _stack_top = .;
+
+    . = ALIGN(4096);
   } 
 
   _kernel_end = .;
