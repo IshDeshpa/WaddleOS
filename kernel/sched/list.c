@@ -138,3 +138,14 @@ void list_pop_first(list_head_t *head){
 
   head->first = (head->len==0)?NULL:new_first;
 }
+
+void list_foreach(list_head_t *head, void (*func)(list_elem_t *, int, void *), void *aux){
+  ASSERT(head != NULL);
+  ASSERT(func != NULL);
+  
+  list_elem_t *curr = head->first;
+  for(int i=0; i<head->len && curr != NULL; i++){
+    func(curr, i, aux);
+    curr = curr->next;
+  }
+}

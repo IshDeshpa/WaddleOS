@@ -1,13 +1,13 @@
 #ifndef LIST_H
 #define LIST_H
 
-// Circular doubly linked list
-
 #include <stddef.h>
+
+// Circular doubly linked list
 
 typedef struct list_elem list_elem_t;
 
-#define GET_LIST_NODE(elem, type) ((type *)((uintptr_t)elem - offsetof(type, elem)))
+#define GET_LIST_NODE(elem, struct_name, elem_name) ((struct_name *)((uintptr_t)elem - offsetof(struct_name, elem_name)))
 
 typedef struct {
   list_elem_t *first;
@@ -28,5 +28,6 @@ void list_push(list_head_t *head, list_elem_t *new);
 void list_push_first(list_head_t *head, list_elem_t *new);
 void list_pop(list_head_t *head);
 void list_pop_first(list_head_t *head);
+void list_foreach(list_head_t *head, void (*func)(list_elem_t *, int, void *), void *aux);
 
 #endif

@@ -1,6 +1,7 @@
 #include "scheduler.h"
 #include "interrupts.h"
 #include "utils.h"
+#include "string.h"
 
 static uint32_t next_tid = 1;
 
